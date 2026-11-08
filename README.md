@@ -24,9 +24,9 @@ Supabase backend for identity and the vehicle registry.
 3. Download **DriveLink-debug-apk** from the run's *Artifacts* and install `DriveLink-debug.apk` on an Android 8+ phone
    (allow "install unknown apps").
 
-Optional repo secrets (Settings → Secrets and variables → Actions): `GOOGLE_MAPS_API_KEY_ANDROID` (needed for the map and
-route preview), `CRED_PUBLIC_KEY_B64` (needed to verify emergency vehicles), `SUPABASE_URL` / `SUPABASE_ANON_KEY` (default to the
-included project). See `docs/ANDROID_SETUP.md`.
+Optional repo secrets (Settings → Secrets and variables → Actions): `CRED_PUBLIC_KEY_B64` (needed to verify emergency
+vehicles), `SUPABASE_URL` / `SUPABASE_ANON_KEY` (default to the included project). The map (MapLibre + OpenFreeMap) and routing
+(OSRM) need **no API key or billing account**. See `docs/ANDROID_SETUP.md` and `docs/MAPS_AND_ROUTING.md`.
 
 ### 2. Publish the website
 Settings → Pages → Source: **GitHub Actions**, then run **Deploy website** (or push a change to `index.html`/`website/`).

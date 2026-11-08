@@ -27,9 +27,12 @@ android {
         // Public client values only. Never put the service_role key here.
         buildConfigField("String", "SUPABASE_URL", "\"${cfg("SUPABASE_URL", "https://zfvbaicrqejktfiszefr.supabase.co")}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${cfg("SUPABASE_ANON_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpmdmJhaWNycWVqa3RmaXN6ZWZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM5NjM5NjgsImV4cCI6MjEwOTUzOTk2OH0.vOGLqCB2w8EmTb90BrXIWtFV9rGusYF56X8z3mjmD9E")}\"")
-        buildConfigField("String", "MAPS_API_KEY", "\"${cfg("GOOGLE_MAPS_API_KEY")}\"")
+        // Map + routing providers (no API keys needed). Override in drivelink.properties / env for self-hosted servers.
+        buildConfigField("String", "MAP_STYLE_LIGHT_URL", "\"${cfg("MAP_STYLE_LIGHT_URL", "https://tiles.openfreemap.org/styles/liberty")}\"")
+        buildConfigField("String", "MAP_STYLE_DARK_URL", "\"${cfg("MAP_STYLE_DARK_URL", "https://tiles.openfreemap.org/styles/dark")}\"")
+        buildConfigField("String", "ROUTING_BASE_URL", "\"${cfg("ROUTING_BASE_URL", "https://router.project-osrm.org")}\"")
+        buildConfigField("String", "GEOCODER_BASE_URL", "\"${cfg("GEOCODER_BASE_URL", "https://nominatim.openstreetmap.org")}\"")
         buildConfigField("String", "CRED_PUBLIC_KEY_B64", "\"${cfg("CRED_PUBLIC_KEY_B64")}\"")
-        manifestPlaceholders["MAPS_API_KEY"] = cfg("GOOGLE_MAPS_API_KEY")
     }
 
     buildFeatures {
@@ -60,8 +63,8 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("com.google.android.gms:play-services-nearby:19.3.0")
     implementation("com.google.android.gms:play-services-location:21.3.0")
-    implementation("com.google.android.gms:play-services-maps:18.2.0")
-    implementation("com.google.maps.android:maps-compose:4.4.1")
+    // MapLibre Native (OpenGL ES build). 11.x matches this project's Kotlin 1.9 / compileSdk 34 toolchain; 13.x needs Kotlin 2.2.
+    implementation("org.maplibre.gl:android-sdk:11.12.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")

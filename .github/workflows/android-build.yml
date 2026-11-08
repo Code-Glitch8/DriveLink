@@ -30,12 +30,12 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY_ANDROID }}
           CRED_PUBLIC_KEY_B64: ${{ secrets.CRED_PUBLIC_KEY_B64 }}
         run: |
           # Optional secrets: empty values fall back to the project defaults / disable the feature.
+          # The map (MapLibre + OpenFreeMap) and routing (OSRM) need no secrets.
           { echo "SUPABASE_URL=$SUPABASE_URL"; echo "SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY";
-            echo "GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_API_KEY"; echo "CRED_PUBLIC_KEY_B64=$CRED_PUBLIC_KEY_B64"; } > drivelink.properties
+            echo "CRED_PUBLIC_KEY_B64=$CRED_PUBLIC_KEY_B64"; } > drivelink.properties
       - name: Build debug APK
         run: gradle assembleDebug --stacktrace
       - name: Collect APK
