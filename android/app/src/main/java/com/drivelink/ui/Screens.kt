@@ -1,6 +1,5 @@
 package com.drivelink.ui
 
-import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -36,6 +35,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -55,25 +56,26 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.core.content.ContextCompat
-import com.drivelink.config.AppConfig
 import com.drivelink.driving.AlertItem
 import com.drivelink.driving.JourneyManager
 import com.drivelink.driving.PeerView
 import com.drivelink.location.Geo
+import com.drivelink.map.CameraCommand
+import com.drivelink.map.DriveLinkMap
+import com.drivelink.map.MAP_DEBUG_ENABLED
+import com.drivelink.map.MapAttribution
+import com.drivelink.map.MapControlButton
+import com.drivelink.map.MapDebugPanel
+import com.drivelink.map.MapDestination
+import com.drivelink.map.MapHandle
+import com.drivelink.map.MapMe
+import com.drivelink.map.MapRoute
+import com.drivelink.map.MapStatus
+import com.drivelink.map.MapStatusBanner
+import com.drivelink.map.MapVehicleMapper
 import com.drivelink.navigation.NavigationHelper
 import com.drivelink.safety.RiskLevel
 import com.drivelink.vehicles.VEHICLE_TYPES
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.GoogleMap
-import com.google.maps.android.compose.MapProperties
-import com.google.maps.android.compose.MapUiSettings
-import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.MarkerState
-import com.google.maps.android.compose.Polyline
-import com.google.maps.android.compose.rememberCameraPositionState
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -134,30 +136,32 @@ fun AuthScreen(st: UiState, vm: AppViewModel) {
 // ---------------------------------------------------------------- Home
 @Composable
 fun HomeScreen(st: UiState, vm: AppViewModel, requestLocation: () -> Unit) {
-    val ctx = LocalContext.current
-    val hasLoc = ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
     var query by remember { mutableStateOf("") }
-    val camera = rememberCameraPositionState { position = CameraPosition.fromLatLngZoom(LatLng(28.6139, 77.2090), 5f) }
+    val handle = remember { MapHandle() }
+    var camera by remember { mutableStateOf<CameraCommand?>(null) }
+    var mapStatus by remember { mutableStateOf<MapStatus>(MapStatus.Loading) }
+    var showDebug by remember { mutableStateOf(false) }
+    val density = LocalDensity.current
     LaunchedEffect(Unit) { requestLocation(); vm.refreshLocation() }
     LaunchedEffect(st.myLat, st.myLon) {
         val la = st.myLat; val lo = st.myLon
-        if (la != null && lo != null) camera.animate(CameraUpdateFactory.newLatLngZoom(LatLng(la, lo), 15f))
+        if (la != null && lo != null) camera = CameraCommand.Center(la, lo, 15.0)
     }
     LaunchedEffect(st.route) {
         val r = st.route
-        if (r != null && r.points.isNotEmpty()) {
-            val b = com.google.android.gms.maps.model.LatLngBounds.builder()
-            r.points.forEach { b.include(LatLng(it.first, it.second)) }
-            camera.animate(CameraUpdateFactory.newLatLngBounds(b.build(), 160))
+        if (r != null && r.points.size >= 2) {
+            // Leave room for the search card at the top and the vehicle card at the bottom.
+            camera = with(density) { CameraCommand.Fit(r.points, 60.dp.roundToPx(), 230.dp.roundToPx(), 60.dp.roundToPx(), 330.dp.roundToPx()) }
         }
     }
+    val me = remember(st.myLat, st.myLon) { st.myLat?.let { la -> st.myLon?.let { lo -> MapMe(la, lo) } } }
+    val dest = remember(st.destination) { st.destination?.let { MapDestination(it.name, it.lat, it.lon) } }
+    val route = remember(st.route) { st.route?.let { MapRoute(it.points, it.alternatives) } }
+
     Box(Modifier.fillMaxSize()) {
-        GoogleMap(modifier = Modifier.fillMaxSize(), cameraPositionState = camera,
-            properties = MapProperties(isMyLocationEnabled = hasLoc),
-            uiSettings = MapUiSettings(zoomControlsEnabled = false, myLocationButtonEnabled = false)) {
-            st.destination?.let { Marker(state = MarkerState(LatLng(it.lat, it.lon)), title = it.name) }
-            st.route?.let { r -> Polyline(points = r.points.map { LatLng(it.first, it.second) }, color = Color(0xFF3B82F6), width = 14f) }
-        }
+        // No real vehicles exist before a journey starts (they come from Nearby Connections), so none are drawn here.
+        DriveLinkMap(handle = handle, dark = st.darkTheme, me = me, destination = dest, route = route,
+            vehicles = emptyList(), selectedVehicleId = null, camera = camera, onStatus = { mapStatus = it })
         Column(Modifier.statusBarsPadding().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             AppCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(10.dp)) {
@@ -166,7 +170,6 @@ fun HomeScreen(st: UiState, vm: AppViewModel, requestLocation: () -> Unit) {
                         Spacer(Modifier.width(8.dp))
                         Button({ if (query.isNotBlank()) vm.search(query) }, enabled = !st.busy, shape = Pill) { Text("Go") }
                     }
-                    if (!AppConfig.mapsConfigured) Text("Google Maps API key not configured — map and route preview unavailable.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp, start = 6.dp))
                     st.searchResults.forEach { p ->
                         Text(p.name, Modifier.fillMaxWidth().clickable { vm.pickDestination(p) }.padding(horizontal = 8.dp, vertical = 11.dp), maxLines = 2, fontSize = 14.sp)
                         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
@@ -185,21 +188,37 @@ fun HomeScreen(st: UiState, vm: AppViewModel, requestLocation: () -> Unit) {
                     }
                 }
             }
+            if (mapStatus !is MapStatus.Ready) MapStatusBanner(mapStatus, { handle.retryStyle() }, Modifier.fillMaxWidth())
         }
-        AppCard(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(12.dp).navigationBarsPadding()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    BrandMark(40.dp)
-                    Column(Modifier.weight(1f)) {
-                        Text(st.activeVehicle?.displayName ?: "No vehicle registered", fontWeight = FontWeight.SemiBold, maxLines = 1)
-                        Text(st.activeVehicle?.driveLinkId ?: "Add a vehicle to get a DriveLink ID", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Chip("Nearby: idle", MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(12.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.SpaceBetween) {
+                MapAttribution()
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (MAP_DEBUG_ENABLED) MapControlButton("🛠", { showDebug = !showDebug })
+                    MapControlButton("+", { handle.zoomBy(1.0) })
+                    MapControlButton("−", { handle.zoomBy(-1.0) })
+                    MapControlButton("◎", {
+                        val la = st.myLat; val lo = st.myLon
+                        if (la != null && lo != null) handle.center(la, lo) else { requestLocation(); vm.refreshLocation() }
+                    })
                 }
-                GradientButton("Start journey", { vm.go(Screen.CONFIRM) }, Modifier.fillMaxWidth())
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    FilledTonalButton({ vm.go(Screen.VEHICLES) }, Modifier.weight(1f)) { Text("Vehicles") }
-                    FilledTonalButton({ vm.go(Screen.SETTINGS) }, Modifier.weight(1f)) { Text("Settings") }
+            }
+            if (MAP_DEBUG_ENABLED && showDebug) MapDebugPanel(handle, Modifier.fillMaxWidth())
+            AppCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        BrandMark(40.dp)
+                        Column(Modifier.weight(1f)) {
+                            Text(st.activeVehicle?.displayName ?: "No vehicle registered", fontWeight = FontWeight.SemiBold, maxLines = 1)
+                            Text(st.activeVehicle?.driveLinkId ?: "Add a vehicle to get a DriveLink ID", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Chip("Nearby: idle", MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    GradientButton("Start journey", { vm.go(Screen.CONFIRM) }, Modifier.fillMaxWidth())
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        FilledTonalButton({ vm.go(Screen.VEHICLES) }, Modifier.weight(1f)) { Text("Vehicles") }
+                        FilledTonalButton({ vm.go(Screen.SETTINGS) }, Modifier.weight(1f)) { Text("Settings") }
+                    }
                 }
             }
         }
@@ -236,7 +255,7 @@ fun ConfirmScreen(st: UiState, vm: AppViewModel, onStart: () -> Unit) {
         Text("Experimental awareness only — not a certified safety system. Set everything up before you drive.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Msg(st)
         GradientButton("Start journey monitoring", onStart, Modifier.fillMaxWidth())
-        st.destination?.let { d -> OutlinedButton({ if (!NavigationHelper.openTurnByTurn(ctx, d)) vm.toast("Google Maps app not installed") }, Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(16.dp)) { Text("Open turn-by-turn in Google Maps") } }
+        st.destination?.let { d -> OutlinedButton({ if (!NavigationHelper.openTurnByTurn(ctx, d)) vm.toast("No maps app found to hand off turn-by-turn navigation") }, Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(16.dp)) { Text("Open turn-by-turn in a maps app") } }
     }
 }
 
@@ -248,6 +267,16 @@ fun DashboardScreen(st: UiState, vm: AppViewModel, onEnd: () -> Unit) {
     var confirm2 by remember { mutableStateOf(false) }
     var hazards by remember { mutableStateOf(false) }
     var detail by remember { mutableStateOf<PeerView?>(null) }
+    var mapMode by rememberSaveable { mutableStateOf(true) }
+    var mapStatus by remember { mutableStateOf<MapStatus>(MapStatus.Loading) }
+    var showDebug by remember { mutableStateOf(false) }
+    val handle = remember { MapHandle() }
+    // Only real, authenticated peers from JourneyManager are drawn; stale ones are filtered out by the mapper.
+    val mapVehicles = remember(j.peers, j.laneRequests) { MapVehicleMapper.fromPeers(j.peers, j.laneRequests, System.currentTimeMillis()) }
+    val followCam = j.self?.let { CameraCommand.Follow(it.lat, it.lon, it.bearing) }
+    val dashMe = remember(j.self?.lat, j.self?.lon, j.self?.bearing) { j.self?.let { MapMe(it.lat, it.lon, it.bearing) } }
+    val dashDest = remember(st.destination) { st.destination?.let { MapDestination(it.name, it.lat, it.lon) } }
+    val dashRoute = remember(st.route) { st.route?.let { MapRoute(it.points, it.alternatives) } }
     LaunchedEffect(j.self) { j.self?.let { vm.onPosition(it.lat, it.lon) } }
     BackHandler { confirm1 = true }
 
@@ -265,7 +294,26 @@ fun DashboardScreen(st: UiState, vm: AppViewModel, onEnd: () -> Unit) {
         j.dataQualityWarning?.let { Banner(it, levelColor(1)) }
         j.alerts.take(3).forEach { a -> AlertCard(a) }
 
-        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Radar(j.self?.bearing ?: 0.0, j.self?.lat, j.self?.lon, j.peers) }
+        Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp))) {
+            if (mapMode) {
+                DriveLinkMap(handle = handle, dark = st.darkTheme, me = dashMe, destination = dashDest, route = dashRoute,
+                    vehicles = mapVehicles, selectedVehicleId = detail?.sid, camera = followCam,
+                    onVehicleTap = { id -> detail = id?.let { sid -> j.peers.firstOrNull { it.sid == sid } } },
+                    onStatus = { mapStatus = it })
+                MapAttribution(Modifier.align(Alignment.BottomStart).padding(6.dp))
+                if (mapStatus !is MapStatus.Ready) MapStatusBanner(mapStatus, { handle.retryStyle() }, Modifier.align(Alignment.TopCenter).padding(6.dp))
+                if (MAP_DEBUG_ENABLED) {
+                    MapControlButton("🛠", { showDebug = !showDebug }, Modifier.align(Alignment.BottomEnd).padding(6.dp))
+                    if (showDebug) MapDebugPanel(handle, Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 58.dp, start = 6.dp, end = 6.dp))
+                }
+            } else {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Radar(j.self?.bearing ?: 0.0, j.self?.lat, j.self?.lon, j.peers) }
+            }
+            Text(if (mapMode) "Radar view" else "Map view",
+                Modifier.align(Alignment.TopEnd).padding(6.dp).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), Pill)
+                    .clickable { mapMode = !mapMode }.padding(horizontal = 12.dp, vertical = 8.dp),
+                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+        }
 
         if (j.peers.isNotEmpty()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             j.peers.take(3).forEach { p ->
@@ -324,7 +372,7 @@ private fun AlertCard(a: AlertItem) {
         color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
 }
 
-/** Simplified heading-up radar: you are at the lower centre, forward is up. Works without a maps key. */
+/** Simplified heading-up radar: you are at the lower centre, forward is up. Needs no map tiles or network. */
 @Composable
 private fun Radar(heading: Double, lat: Double?, lon: Double?, peers: List<PeerView>) {
     val rangeM = 300.0

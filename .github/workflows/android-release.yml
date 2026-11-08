@@ -21,7 +21,6 @@ jobs:
           {
             echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}"
             echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}"
-            echo "GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY_ANDROID }}"
             echo "CRED_PUBLIC_KEY_B64=${{ secrets.CRED_PUBLIC_KEY_B64 }}"
           } > drivelink.properties
       - name: Build signed release

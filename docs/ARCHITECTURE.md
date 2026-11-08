@@ -17,7 +17,8 @@ hazards and emergency alerts flow phone-to-phone with no internet. Live position
 - `location` — `LocationProvider` (adaptive Fused Location), `VehicleTracker` (latest valid peer state, stale pruning), `Geo`.
 - `safety` — `RiskEngine` (experimental time-of-closest-approach reasoning, GPS-accuracy aware).
 - `driving` — `JourneyManager` orchestrates a journey; `notifications` — `JourneyService` (foreground), `AlertSpeaker` (TTS, priorities, cooldowns).
-- `navigation` — destination search (Geocoder), route preview + step list (Directions API), hand-off to Google Maps for turn-by-turn.
+- `navigation` — destination search (on-device Geocoder, Nominatim fallback), route preview + step list via a pluggable `RoutingProvider` (OSRM), hand-off to any maps app for turn-by-turn.
+- `map` — MapLibre Native map (`DriveLinkMap`), `MapLayerManager` (logical layer tree, GeoJSON sources), vehicle/route/location layers, debug-only layer panel.
 - `authentication` — `SupabaseApi` (GoTrue, PostgREST, Edge Functions via OkHttp), `SessionStore`.
 - `ui` — Compose screens: sign-in, home map, journey confirmation, driving dashboard (radar), vehicles, settings.
 
@@ -35,8 +36,7 @@ hazards and emergency alerts flow phone-to-phone with no internet. Live position
 ## Known limitations
 - Not compiled/run on a device yet. Room and DataStore are not used: SharedPreferences hold the session and preferences, and nothing needs a
   local database yet (so `database/` is empty). The session is stored in private app storage, not encrypted storage.
-- Google Navigation SDK is **not** integrated (it needs separate Google Cloud approval/licensing). Route preview uses the Directions API and
-  turn-by-turn opens the Google Maps app.
+- In-app voice turn-by-turn is **not** implemented. Route preview uses OSRM and turn-by-turn is handed to an installed maps app.
 - Blind-turn detection is the same trajectory logic without road-geometry data; no lane-level positioning.
 - Sudden braking uses GPS speed drop only (experimental); no accelerometer fusion.
 - The cached-credential/revocation system is replaced by never trusting previous connections; emergency credentials expire after 24 h.

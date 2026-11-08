@@ -44,7 +44,12 @@ data class PeerView(
     val lon: Double,
     val risk: RiskAssessment,
     val verifiedEmergency: String?,
+    val bearing: Double = 0.0,   // peer heading in degrees, used by the map direction arrow
+    val speedKmh: Double = 0.0,
 )
+
+/** A recent lane-merge request from a peer, keyed by its temporary session id. Shown briefly on the map. */
+data class LaneRequest(val direction: String, val atMs: Long)
 
 /** level: 0 info, 1 caution, 2 high, 3 emergency */
 data class AlertItem(val id: Long, val text: String, val level: Int, val atMs: Long)
@@ -59,6 +64,7 @@ data class JourneyState(
     val dataQualityWarning: String? = null,
     val canSendEmergency: Boolean = false,
     val sessionId: String = "",
+    val laneRequests: Map<String, LaneRequest> = emptyMap(),
 )
 
 data class JourneyConfig(
@@ -199,7 +205,8 @@ object JourneyManager {
         val views = nearbyList.map { n ->
             val risk = if (fresh && s != null) RiskEngine.assess(s, n.sample, now)
             else RiskAssessment(RiskLevel.NORMAL, true, "No valid own position")
-            PeerView(n.sid, n.vehicleType, n.distanceM, n.direction, n.ageMs, n.sample.lat, n.sample.lon, risk, n.emergencyType)
+            PeerView(n.sid, n.vehicleType, n.distanceM, n.direction, n.ageMs, n.sample.lat, n.sample.lon, risk, n.emergencyType,
+                n.sample.bearing, n.sample.speedKmh)
         }
         views.forEach { v ->
             when (v.risk.level) {
@@ -222,7 +229,8 @@ object JourneyManager {
         }
         _state.update {
             it.copy(self = s, peers = views, connected = repo.count(), dataQualityWarning = warning,
-                alerts = it.alerts.filter { a -> now - a.atMs < 30_000 })
+                alerts = it.alerts.filter { a -> now - a.atMs < 30_000 },
+                laneRequests = it.laneRequests.filterValues { r -> now - r.atMs < 10_000 })
         }
     }
 
@@ -249,6 +257,8 @@ object JourneyManager {
             is PeerEvent.Status -> tracker.update(e.sid, e.vehicleType, e.sample, e.emergencyType)
             is PeerEvent.PeerAuthenticated -> _state.update { it.copy(comm = "Authenticated peer ${e.sid.takeLast(4)}") }
             is PeerEvent.LaneChange -> {
+                val nowMs = System.currentTimeMillis()
+                _state.update { st -> st.copy(laneRequests = st.laneRequests + (e.sid to LaneRequest(e.direction, nowMs))) }
                 val side = if (e.direction == "LEFT") "left" else "right"
                 pushAlertDedup("lane-${e.sid}", "Vehicle (${describe(e.sid)}) requests to merge $side — not permission", 1, 6_000)
                 speaker?.speak("lane-$side", "Vehicle requests to merge $side.", 2, 6_000)
