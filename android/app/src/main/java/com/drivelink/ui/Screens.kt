@@ -152,7 +152,7 @@ fun HomeScreen(st: UiState, vm: AppViewModel, requestLocation: () -> Unit) {
         }
     }
     Box(Modifier.fillMaxSize()) {
-        GoogleMap(Modifier.fillMaxSize(), cameraPositionState = camera,
+        GoogleMap(modifier = Modifier.fillMaxSize(), cameraPositionState = camera,
             properties = MapProperties(isMyLocationEnabled = hasLoc),
             uiSettings = MapUiSettings(zoomControlsEnabled = false, myLocationButtonEnabled = false)) {
             st.destination?.let { Marker(state = MarkerState(LatLng(it.lat, it.lon)), title = it.name) }
