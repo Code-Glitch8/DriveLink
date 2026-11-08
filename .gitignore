@@ -1,0 +1,11 @@
+.env
+*.keystore
+*.jks
+local.properties
+drivelink.properties
+android/.gradle/
+android/build/
+android/app/build/
+.idea/
+_site/
+node_modules/

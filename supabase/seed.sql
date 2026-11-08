@@ -1,0 +1,3 @@
+-- Optional seed. Grant yourself admin (run in the Supabase SQL editor, never from a client):
+-- insert into public.admin_users(user_id) values ('<your auth.users id>');
+-- Admins verify emergency vehicles with: select public.admin_set_emergency_status('<emergency_accounts id>', 'verified');
