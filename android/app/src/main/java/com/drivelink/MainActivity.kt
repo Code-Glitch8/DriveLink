@@ -62,7 +62,7 @@ class MainActivity : ComponentActivity() {
         if (need.isEmpty()) onResult() else { afterPermissions = onResult; permLauncher.launch(need.toTypedArray()) }
     }
 
-    private fun setImmersive(on: Boolean) {
+    private fun applyImmersiveMode(on: Boolean) {
         val c = WindowCompat.getInsetsController(window, window.decorView)
         if (on) {
             c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -78,7 +78,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             val st by vm.ui.collectAsState()
-            LaunchedEffect(st.screen) { setImmersive(st.screen == Screen.DASHBOARD) }
+            LaunchedEffect(st.screen) {
+                applyImmersiveMode(st.screen == Screen.DASHBOARD)
+            }
             DriveLinkTheme(st.darkTheme) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     when (st.screen) {
