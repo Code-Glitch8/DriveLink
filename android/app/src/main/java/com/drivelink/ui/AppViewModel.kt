@@ -9,6 +9,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.drivelink.authentication.Session
+import com.drivelink.hazards.HazardArea
+import com.drivelink.hazards.HazardCategory
+import com.drivelink.hazards.HazardRepository
 import com.drivelink.authentication.SessionStore
 import com.drivelink.authentication.SupabaseApi
 import com.drivelink.driving.JourneyConfig
@@ -107,6 +110,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun signOut() {
         JourneyManager.stop()
+        stopHazardSync()
         store.clear()
         _ui.update { UiState(darkTheme = it.darkTheme, voiceAlerts = it.voiceAlerts) }
     }
@@ -122,6 +126,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- data ----
     fun loadAll() = viewModelScope.launch {
+        startHazardSync()
         try {
             val t = token(); val uid = _ui.value.session!!.userId
             val vehicles = SupabaseApi.listVehicles(t)
@@ -164,6 +169,44 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setVoice(on: Boolean) {
         prefs.edit().putBoolean("voice", on).apply(); _ui.update { it.copy(voiceAlerts = on) }
         viewModelScope.launch { try { SupabaseApi.updateSettings(token(), _ui.value.session!!.userId, JSONObject().put("voice_alerts", on)) } catch (_: Exception) {} }
+    }
+
+    // ---- shared hazards ----
+    private var hazardJobStarted = false
+    private fun startHazardSync() {
+        if (hazardJobStarted) return
+        hazardJobStarted = true
+        HazardRepository.start(viewModelScope, { try { token() } catch (_: Exception) { null } }) {
+            val j = JourneyManager.state.value.self
+            val st = _ui.value
+            val lat = j?.lat ?: st.myLat; val lon = j?.lon ?: st.myLon
+            if (lat == null || lon == null) null
+            else HazardArea(lat, lon, j?.speedKmh ?: 0.0, st.route?.points)
+        }
+    }
+    private fun stopHazardSync() { hazardJobStarted = false; HazardRepository.stop() }
+
+    /** Report at the current position. Uses the journey GPS fix when available, otherwise the last known position. */
+    fun reportHazard(category: HazardCategory, description: String?) = viewModelScope.launch {
+        val j = JourneyManager.state.value.self
+        val st = _ui.value
+        val lat = j?.lat ?: st.myLat; val lon = j?.lon ?: st.myLon
+        if (lat == null || lon == null) return@launch toast("No GPS position yet — cannot report a hazard")
+        try {
+            val h = HazardRepository.report(token(), category, lat, lon, j?.accuracyM?.takeIf { it < 9000 }, description)
+            toast(if (h.confirmations > 1) "Already reported nearby — added your confirmation" else "Hazard reported. Thank you")
+        } catch (e: Exception) { toast("Could not report hazard: ${e.message}") }
+    }
+
+    fun voteHazard(id: String, vote: String) = viewModelScope.launch {
+        val j = JourneyManager.state.value.self
+        val st = _ui.value
+        val lat = j?.lat ?: st.myLat; val lon = j?.lon ?: st.myLon
+        if (lat == null || lon == null) return@launch toast("No GPS position yet")
+        try {
+            val h = HazardRepository.vote(token(), id, vote, lat, lon)
+            toast(when { !h.active -> "Marked as cleared"; vote == "clear" -> "Thanks — needs one more driver to clear it"; else -> "Thanks for confirming" })
+        } catch (e: Exception) { toast("Could not update hazard: ${e.message}") }
     }
 
     fun go(screen: Screen) = _ui.update { it.copy(screen = screen, message = null) }

@@ -53,6 +53,15 @@ object MapGeoJson {
     fun destination(d: MapDestination?): FeatureCollection =
         d?.let { FeatureCollection.fromFeature(point(it.lat, it.lon)) } ?: EMPTY
 
+    fun hazards(list: List<MapHazard>): FeatureCollection = FeatureCollection.fromFeatures(list.map { h ->
+        point(h.lat, h.lon).also { f ->
+            f.addStringProperty(MapIds.Prop.ID, h.id)
+            f.addStringProperty(MapIds.Prop.ICON, MapIds.Image.hazard(h.categoryKey))
+            f.addBooleanProperty(MapIds.Prop.SEVERE, h.severe)
+            f.addNumberProperty(MapIds.Prop.OPACITY, if (h.faded) 0.6 else 1.0)
+        }
+    })
+
     fun me(me: MapMe?): FeatureCollection =
         me?.let {
             val f = point(it.lat, it.lon)

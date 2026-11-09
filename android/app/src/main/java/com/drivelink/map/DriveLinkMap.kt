@@ -28,23 +28,27 @@ fun DriveLinkMap(
     destination: MapDestination?,
     route: MapRoute?,
     vehicles: List<MapVehicle>,
+    hazards: List<MapHazard> = emptyList(),
     selectedVehicleId: String?,
     camera: CameraCommand?,
     modifier: Modifier = Modifier.fillMaxSize(),
     onVehicleTap: (String?) -> Unit = {},
     onStatus: (MapStatus) -> Unit = {},
     onUserGesture: () -> Unit = {},
+    onHazardTap: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val tapState = rememberUpdatedState(onVehicleTap)
     val statusState = rememberUpdatedState(onStatus)
     val gestureState = rememberUpdatedState(onUserGesture)
+    val hazardTapState = rememberUpdatedState(onHazardTap)
     val controller = remember {
         MapController(context, dark).also { c ->
             c.onVehicleTap = { id -> tapState.value(id) }
             c.onStatus = { s -> statusState.value(s) }
             c.onUserGesture = { gestureState.value() }
+            c.onHazardTap = { id -> hazardTapState.value(id) }
         }
     }
 
@@ -70,6 +74,7 @@ fun DriveLinkMap(
 
     LaunchedEffect(dark) { controller.setTheme(dark) }
     LaunchedEffect(vehicles, selectedVehicleId) { controller.layers.setVehicles(vehicles, selectedVehicleId) }
+    LaunchedEffect(hazards) { controller.layers.setHazards(hazards) }
     LaunchedEffect(route) { controller.layers.setRoute(route) }
     LaunchedEffect(destination) { controller.layers.setDestination(destination) }
     LaunchedEffect(me) { controller.layers.setMe(me) }

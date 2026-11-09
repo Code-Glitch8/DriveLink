@@ -26,6 +26,7 @@ enum class LogicalGroup(val path: String, val owned: Boolean) {
     VEH_APPROACHING("4. Vehicle communication / Approaching vehicle indicators", true),
     VEH_MERGE("4. Vehicle communication / Lane merge request indicators", true),
     VEH_EMERGENCY("4. Vehicle communication / Emergency vehicle indicators", true),
+    HAZARDS("3. Navigation / Shared hazards", true),
     UI_SELECTED_VEHICLE("5. User interface / Selected vehicle", true),
     UI_SELECTED_DESTINATION("5. User interface / Selected destination", true),
 }
@@ -39,6 +40,7 @@ object MapIds {
         const val ME = "dl-src-me"
         const val VEHICLES = "dl-src-vehicles"
         const val UI_SELECTION = "dl-src-ui-selection"
+        const val HAZARDS = "dl-src-hazards"
     }
 
     object Layer {
@@ -46,6 +48,8 @@ object MapIds {
         const val ROUTE_CASING = "dl-nav-route-casing"
         const val ROUTE_MAIN = "dl-nav-route-main"
         const val DESTINATION = "dl-nav-destination"
+        const val HAZARD_ICON = "dl-nav-hazard-icon"
+        const val HAZARD_RING = "dl-nav-hazard-ring"
         const val ME_HALO = "dl-nav-me-halo"
         const val ME = "dl-nav-me"
         const val ME_ARROW = "dl-nav-me-arrow"
@@ -63,6 +67,7 @@ object MapIds {
         const val ARROW_HIGH = "dl-arrow-high"
         const val ARROW_EMERGENCY = "dl-arrow-emergency"
         const val ARROW_SELECTED = "dl-arrow-selected"
+        fun hazard(categoryKey: String) = "dl-hazard-$categoryKey"
     }
 
     /** Feature property names inside the vehicle GeoJSON source. */
@@ -77,6 +82,7 @@ object MapIds {
         const val MERGE = "merge"
         const val KIND = "kind"
         const val HAS_HEADING = "hasHeading"
+        const val SEVERE = "severe"
     }
 }
 

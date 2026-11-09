@@ -37,5 +37,6 @@ object MapImages {
             MapIds.Image.ARROW_EMERGENCY to Color.parseColor("#B3001B"),
             MapIds.Image.ARROW_SELECTED to Color.parseColor("#4C8DFF"),
         ).forEach { (name, color) -> style.addImage(name, arrow(color)) }
+        HazardIcons.install(style)
     }
 }

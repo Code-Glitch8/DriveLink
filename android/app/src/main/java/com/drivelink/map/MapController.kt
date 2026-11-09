@@ -27,6 +27,7 @@ class MapController(context: Context, private var dark: Boolean) {
 
     var onStatus: (MapStatus) -> Unit = {}
     var onVehicleTap: (String?) -> Unit = {}
+    var onHazardTap: (String) -> Unit = {}
     /** Fired when the user pans/zooms/rotates the map by hand (not for our own camera commands). */
     var onUserGesture: () -> Unit = {}
 
@@ -70,8 +71,10 @@ class MapController(context: Context, private var dark: Boolean) {
             val id = if (layers.isStyleReady) {
                 m.queryRenderedFeatures(area, MapIds.Layer.VEH_DIRECTION).firstOrNull()?.getStringProperty(MapIds.Prop.ID)
             } else null
-            onVehicleTap(id)
-            id != null
+            val hazardId = if (id == null && layers.isStyleReady)
+                m.queryRenderedFeatures(area, MapIds.Layer.HAZARD_ICON).firstOrNull()?.getStringProperty(MapIds.Prop.ID) else null
+            if (hazardId != null) onHazardTap(hazardId) else onVehicleTap(id)
+            id != null || hazardId != null
         }
     }
 

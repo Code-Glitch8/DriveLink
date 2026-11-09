@@ -25,6 +25,9 @@ data class MapVehicle(
     val emergencyType: String? = null, // only for server-credential-verified emergency vehicles
 )
 
+/** A shared hazard to draw. [faded] is used for low-confidence/disputed reports so they are never shown as fact. */
+data class MapHazard(val id: String, val categoryKey: String, val lat: Double, val lon: Double, val severe: Boolean, val faded: Boolean)
+
 data class MapMe(val lat: Double, val lon: Double, val headingDeg: Double? = null)
 data class MapDestination(val name: String, val lat: Double, val lon: Double)
 
@@ -82,4 +85,12 @@ object MapVehicleMapper {
                 emergencyType = p.verifiedEmergency,
             )
         }
+}
+
+object MapHazardMapper {
+    /** Active hazards only (expired ones are dropped even if the server list is stale). Low-confidence/disputed are drawn faded. */
+    fun from(list: List<com.drivelink.hazards.Hazard>, nowMs: Long): List<MapHazard> = list.filter { it.isActive(nowMs) }.map {
+        MapHazard(it.id, it.category.key, it.lat, it.lon, it.category.severity >= 3,
+            it.confidence == com.drivelink.hazards.HazardConfidence.LOW || it.confidence == com.drivelink.hazards.HazardConfidence.DISPUTED)
+    }
 }

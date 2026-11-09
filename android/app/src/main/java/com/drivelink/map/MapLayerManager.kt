@@ -150,6 +150,8 @@ class MapLayerManager {
         pushSelection()
     }
 
+    fun setHazards(list: List<MapHazard>) = updateSource(MapIds.Source.HAZARDS, MapGeoJson.hazards(list))
+
     fun setMe(me: MapMe?) = updateSource(MapIds.Source.ME, MapGeoJson.me(me))
 
     private fun pushSelection() {
@@ -251,6 +253,20 @@ class MapLayerManager {
             CircleLayer(MapIds.Layer.DESTINATION, MapIds.Source.DESTINATION).withProperties(
                 PropertyFactory.circleColor(c("#E5392B")), PropertyFactory.circleRadius(9f),
                 PropertyFactory.circleStrokeColor(Color.WHITE), PropertyFactory.circleStrokeWidth(3f))
+        })
+        // Shared hazards sit above routes and below my position and vehicles. A red ring marks high-severity ones.
+        addLayer(LayerSpec(MapIds.Layer.HAZARD_RING, LogicalGroup.HAZARDS, MapIds.Source.HAZARDS, false) {
+            CircleLayer(MapIds.Layer.HAZARD_RING, MapIds.Source.HAZARDS).withProperties(
+                PropertyFactory.circleColor(Color.TRANSPARENT), PropertyFactory.circleRadius(26f),
+                PropertyFactory.circleStrokeColor(c("#E5392B")), PropertyFactory.circleStrokeWidth(2.5f), PropertyFactory.circleStrokeOpacity(0.8f)
+            ).also { it.setFilter(trueExpr(MapIds.Prop.SEVERE)) }
+        })
+        addLayer(LayerSpec(MapIds.Layer.HAZARD_ICON, LogicalGroup.HAZARDS, MapIds.Source.HAZARDS, false) {
+            SymbolLayer(MapIds.Layer.HAZARD_ICON, MapIds.Source.HAZARDS).withProperties(
+                PropertyFactory.iconImage(Expression.get(MapIds.Prop.ICON)),
+                PropertyFactory.iconSize(0.8f),
+                PropertyFactory.iconOpacity(Expression.get(MapIds.Prop.OPACITY)),
+                PropertyFactory.iconAllowOverlap(true), PropertyFactory.iconIgnorePlacement(true))
         })
         addLayer(LayerSpec(MapIds.Layer.ME_HALO, LogicalGroup.NAV_CURRENT_LOCATION, MapIds.Source.ME, false) {
             CircleLayer(MapIds.Layer.ME_HALO, MapIds.Source.ME).withProperties(
