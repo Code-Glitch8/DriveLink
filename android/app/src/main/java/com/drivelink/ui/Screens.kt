@@ -74,6 +74,14 @@ import com.drivelink.map.MapStatus
 import com.drivelink.map.MapStatusBanner
 import com.drivelink.map.MapVehicleMapper
 import com.drivelink.navigation.NavigationHelper
+import com.drivelink.orientation.CameraUpdateGate
+import com.drivelink.orientation.HeadingTracker
+import com.drivelink.orientation.MapOrientationMode
+import com.drivelink.orientation.MapOrientationSession
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.drivelink.safety.RiskLevel
 import com.drivelink.vehicles.VEHICLE_TYPES
 import kotlin.math.cos
@@ -273,8 +281,31 @@ fun DashboardScreen(st: UiState, vm: AppViewModel, onEnd: () -> Unit) {
     val handle = remember { MapHandle() }
     // Only real, authenticated peers from JourneyManager are drawn; stale ones are filtered out by the mapper.
     val mapVehicles = remember(j.peers, j.laneRequests) { MapVehicleMapper.fromPeers(j.peers, j.laneRequests, System.currentTimeMillis()) }
-    val followCam = j.self?.let { CameraCommand.Follow(it.lat, it.lon, it.bearing) }
-    val dashMe = remember(j.self?.lat, j.self?.lon, j.self?.bearing) { j.self?.let { MapMe(it.lat, it.lon, it.bearing) } }
+    // Heading pipeline (compass + GPS course). Sensors run only while this screen is at least STARTED.
+    val heading by HeadingTracker.heading.collectAsState()
+    val ctx = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        var held = false
+        val obs = LifecycleEventObserver { _, e ->
+            if (e == Lifecycle.Event.ON_START && !held) { HeadingTracker.acquire(ctx); held = true }
+            if (e == Lifecycle.Event.ON_STOP && held) { HeadingTracker.release(); held = false }
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs); if (held) HeadingTracker.release() }
+    }
+    var orientMode by remember { mutableStateOf(MapOrientationSession.mode) }
+    var following by remember { mutableStateOf(true) }
+    val gate = remember { CameraUpdateGate() }
+    var followCam by remember { mutableStateOf<CameraCommand?>(null) }
+    LaunchedEffect(j.self, heading.deg, orientMode, following) {
+        val s = j.self ?: return@LaunchedEffect
+        if (!following) return@LaunchedEffect
+        val bearing = if (orientMode == MapOrientationMode.HEADING_UP) heading.deg else null
+        if (gate.shouldUpdate(System.currentTimeMillis(), s.lat, s.lon, bearing)) followCam = CameraCommand.Track(s.lat, s.lon, bearing)
+    }
+    // The marker always uses the true heading (never the map rotation), so it stays geographically correct.
+    val dashMe = remember(j.self?.lat, j.self?.lon, heading.deg) { j.self?.let { MapMe(it.lat, it.lon, heading.deg) } }
     val dashDest = remember(st.destination) { st.destination?.let { MapDestination(it.name, it.lat, it.lon) } }
     val dashRoute = remember(st.route) { st.route?.let { MapRoute(it.points, it.alternatives) } }
     LaunchedEffect(j.self) { j.self?.let { vm.onPosition(it.lat, it.lon) } }
@@ -286,8 +317,7 @@ fun DashboardScreen(st: UiState, vm: AppViewModel, onEnd: () -> Unit) {
                 Chip(if (j.connected > 0) "Linked · ${j.connected} vehicle(s)" else "Searching…", if (j.connected > 0) Color(0xFF22C55E) else Color(0xFF8B98B0))
                 Text(j.comm, fontSize = 12.sp, maxLines = 1, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text("${j.self?.speedKmh?.toInt() ?: 0}", fontSize = 56.sp, fontWeight = FontWeight.Bold)
-            Text(" km/h", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SpeedDisplay(j.speed)
         }
         val step = st.route?.steps?.getOrNull(st.stepIndex)
         if (step != null) Banner("${step.instruction} (${step.distanceText})", MaterialTheme.colorScheme.primary)
@@ -299,7 +329,12 @@ fun DashboardScreen(st: UiState, vm: AppViewModel, onEnd: () -> Unit) {
                 DriveLinkMap(handle = handle, dark = st.darkTheme, me = dashMe, destination = dashDest, route = dashRoute,
                     vehicles = mapVehicles, selectedVehicleId = detail?.sid, camera = followCam,
                     onVehicleTap = { id -> detail = id?.let { sid -> j.peers.firstOrNull { it.sid == sid } } },
-                    onStatus = { mapStatus = it })
+                    onStatus = { mapStatus = it }, onUserGesture = { following = false })
+                OrientationControls(orientMode, following,
+                    onToggleMode = { orientMode = if (orientMode == MapOrientationMode.HEADING_UP) MapOrientationMode.NORTH_UP else MapOrientationMode.HEADING_UP
+                        MapOrientationSession.mode = orientMode; following = true; gate.reset() },
+                    onRecenter = { following = true; gate.reset() },
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(6.dp))
                 MapAttribution(Modifier.align(Alignment.BottomStart).padding(6.dp))
                 if (mapStatus !is MapStatus.Ready) MapStatusBanner(mapStatus, { handle.retryStyle() }, Modifier.align(Alignment.TopCenter).padding(6.dp))
                 if (MAP_DEBUG_ENABLED) {

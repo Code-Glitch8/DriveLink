@@ -27,6 +27,8 @@ class MapController(context: Context, private var dark: Boolean) {
 
     var onStatus: (MapStatus) -> Unit = {}
     var onVehicleTap: (String?) -> Unit = {}
+    /** Fired when the user pans/zooms/rotates the map by hand (not for our own camera commands). */
+    var onUserGesture: () -> Unit = {}
 
     private var map: MapLibreMap? = null
     private var chain: List<StyleSource> = emptyList()
@@ -57,6 +59,9 @@ class MapController(context: Context, private var dark: Boolean) {
         m.uiSettings.isLogoEnabled = false
         m.uiSettings.isCompassEnabled = false
         m.uiSettings.isTiltGesturesEnabled = false
+        m.addOnCameraMoveStartedListener { reason ->
+            if (reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) onUserGesture()
+        }
         m.cameraPosition = CameraPosition.Builder().target(LatLng(28.6139, 77.2090)).zoom(4.5).build()
         val tapPad = mapView.resources.displayMetrics.density * 28f
         m.addOnMapClickListener { ll ->
@@ -124,6 +129,11 @@ class MapController(context: Context, private var dark: Boolean) {
             when (cmd) {
                 is CameraCommand.Center ->
                     m.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(cmd.lat, cmd.lon), cmd.zoom), 800)
+                is CameraCommand.Track -> {
+                    val b = CameraPosition.Builder().target(LatLng(cmd.lat, cmd.lon)).bearing(cmd.bearing ?: 0.0).tilt(0.0)
+                    cmd.zoom?.let { b.zoom(it) } ?: b.zoom(m.cameraPosition.zoom)
+                    m.easeCamera(CameraUpdateFactory.newCameraPosition(b.build()), cmd.durationMs.coerceAtLeast(1))
+                }
                 is CameraCommand.Follow -> m.easeCamera(
                     CameraUpdateFactory.newCameraPosition(
                         CameraPosition.Builder().target(LatLng(cmd.lat, cmd.lon)).zoom(cmd.zoom).bearing(cmd.bearing).tilt(0.0).build()), 900)

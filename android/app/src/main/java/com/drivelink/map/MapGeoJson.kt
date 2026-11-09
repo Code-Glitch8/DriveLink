@@ -54,7 +54,13 @@ object MapGeoJson {
         d?.let { FeatureCollection.fromFeature(point(it.lat, it.lon)) } ?: EMPTY
 
     fun me(me: MapMe?): FeatureCollection =
-        me?.let { FeatureCollection.fromFeature(point(it.lat, it.lon)) } ?: EMPTY
+        me?.let {
+            val f = point(it.lat, it.lon)
+            // Heading is only attached when known, so the arrow layer (filtered on hasHeading) never shows an invented direction.
+            if (it.headingDeg != null) { f.addNumberProperty(MapIds.Prop.HEADING, it.headingDeg); f.addBooleanProperty(MapIds.Prop.HAS_HEADING, true) }
+            else f.addBooleanProperty(MapIds.Prop.HAS_HEADING, false)
+            FeatureCollection.fromFeature(f)
+        } ?: EMPTY
 
     /** Selected vehicle and selected destination overlays share one source, told apart by a `kind` property. */
     fun selection(vehicle: MapVehicle?, destination: MapDestination?): FeatureCollection {

@@ -33,15 +33,18 @@ fun DriveLinkMap(
     modifier: Modifier = Modifier.fillMaxSize(),
     onVehicleTap: (String?) -> Unit = {},
     onStatus: (MapStatus) -> Unit = {},
+    onUserGesture: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val tapState = rememberUpdatedState(onVehicleTap)
     val statusState = rememberUpdatedState(onStatus)
+    val gestureState = rememberUpdatedState(onUserGesture)
     val controller = remember {
         MapController(context, dark).also { c ->
             c.onVehicleTap = { id -> tapState.value(id) }
             c.onStatus = { s -> statusState.value(s) }
+            c.onUserGesture = { gestureState.value() }
         }
     }
 

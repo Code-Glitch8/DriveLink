@@ -48,6 +48,7 @@ object MapIds {
         const val DESTINATION = "dl-nav-destination"
         const val ME_HALO = "dl-nav-me-halo"
         const val ME = "dl-nav-me"
+        const val ME_ARROW = "dl-nav-me-arrow"
         const val VEH_EMERGENCY_HALO = "dl-veh-emergency-halo"
         const val VEH_APPROACHING = "dl-veh-approaching"
         const val VEH_MERGE = "dl-veh-merge"
@@ -75,6 +76,7 @@ object MapIds {
         const val APPROACHING = "approaching"
         const val MERGE = "merge"
         const val KIND = "kind"
+        const val HAS_HEADING = "hasHeading"
     }
 }
 

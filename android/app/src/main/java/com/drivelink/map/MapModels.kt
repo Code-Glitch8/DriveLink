@@ -33,6 +33,11 @@ data class MapRoute(val main: List<Pair<Double, Double>>, val alternatives: List
 
 sealed interface CameraCommand {
     data class Center(val lat: Double, val lon: Double, val zoom: Double = 15.0) : CameraCommand
+    /**
+     * Keeps the camera on the user. [bearing] = null means North-Up (camera bearing 0). Zoom is left alone unless
+     * [zoom] is given, so the user's own zoom level is respected while following.
+     */
+    data class Track(val lat: Double, val lon: Double, val bearing: Double?, val zoom: Double? = null, val durationMs: Int = 300) : CameraCommand
     data class Follow(val lat: Double, val lon: Double, val bearing: Double, val zoom: Double = 16.5) : CameraCommand
     data class Fit(
         val points: List<Pair<Double, Double>>,

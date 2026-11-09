@@ -15,6 +15,10 @@ import com.drivelink.communication.VehicleDataManager
 import com.drivelink.config.AppConfig
 import com.drivelink.location.LocationProvider
 import com.drivelink.location.LocationSample
+import com.drivelink.location.SpeedFilter
+import com.drivelink.location.SpeedFix
+import com.drivelink.location.SpeedReading
+import com.drivelink.orientation.HeadingTracker
 import com.drivelink.location.VehicleTracker
 import com.drivelink.notifications.AlertSpeaker
 import com.drivelink.safety.RiskAssessment
@@ -65,6 +69,8 @@ data class JourneyState(
     val canSendEmergency: Boolean = false,
     val sessionId: String = "",
     val laneRequests: Map<String, LaneRequest> = emptyMap(),
+    /** Smoothed speed for display; [SpeedReading.Unavailable] when no trustworthy recent fix exists. */
+    val speed: SpeedReading = SpeedReading.Unavailable,
 )
 
 data class JourneyConfig(
@@ -96,6 +102,8 @@ object JourneyManager {
     @Volatile private var me: LocationSample? = null
     @Volatile private var credential: Pair<String, String>? = null
     private val speedHistory = ArrayDeque<Pair<Long, Double>>()
+    private val speedFilter = SpeedFilter()
+    private var appContext: Context? = null
     private var lastBrakeSentMs = 0L
 
     fun configure(c: JourneyConfig) { config = c }
@@ -110,6 +118,8 @@ object JourneyManager {
         val auth = VehicleAuthenticationManager(verifier)
         val clock = { System.currentTimeMillis() }
         repo.clear(); tracker.clear(); credential = null; me = null; synchronized(speedHistory) { speedHistory.clear() }
+        synchronized(speedFilter) { speedFilter.reset() }
+        appContext = app
 
         val dm = VehicleDataManager(sidName, keys, auth, repo, clock) { handleEvent(it) }
         val nc = NearbyConnectionManager(app)
@@ -131,7 +141,8 @@ object JourneyManager {
         scope = sc
         val lp = LocationProvider(app)
         location = lp
-        lp.start { s -> me = s; noteSpeed(s) }
+        HeadingTracker.acquire(app)
+        lp.start { raw -> onLocation(raw) }
         dd.start()
 
         // Emergency vehicles fetch a server-signed credential (needs internet once); peers verify it offline.
@@ -161,6 +172,7 @@ object JourneyManager {
 
     fun stop() {
         scope?.cancel(); scope = null
+        if (location != null) HeadingTracker.release() // pairs with acquire() in start()
         location?.stop(); location = null
         discovery?.stop(); discovery = null
         nearby = null; data = null
@@ -172,6 +184,17 @@ object JourneyManager {
     private fun broadcastHello() {
         val dm = data ?: return
         nearby?.send(repo.connectedIds(), dm.hello(config.driveLinkId, config.vehicleType, credential))
+    }
+
+    private fun onLocation(raw: LocationSample) {
+        HeadingTracker.onGps(raw)
+        // Share/assess with the fused heading: compass when stationary, GPS course when moving.
+        val s = HeadingTracker.current()?.let { raw.copy(bearing = it) } ?: raw
+        me = s
+        noteSpeed(s)
+        synchronized(speedFilter) {
+            speedFilter.accept(SpeedFix(raw.hasSpeed, raw.speedKmh / 3.6, raw.accuracyM, raw.speedAccuracyMps, raw.fixTimeMs, raw.fixAgeMs), System.currentTimeMillis())
+        }
     }
 
     private fun noteSpeed(s: LocationSample) {
@@ -228,7 +251,7 @@ object JourneyManager {
             else -> null
         }
         _state.update {
-            it.copy(self = s, peers = views, connected = repo.count(), dataQualityWarning = warning,
+            it.copy(self = s, speed = synchronized(speedFilter) { speedFilter.read(now) }, peers = views, connected = repo.count(), dataQualityWarning = warning,
                 alerts = it.alerts.filter { a -> now - a.atMs < 30_000 },
                 laneRequests = it.laneRequests.filterValues { r -> now - r.atMs < 10_000 })
         }

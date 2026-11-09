@@ -261,6 +261,15 @@ class MapLayerManager {
                 PropertyFactory.circleColor(c("#4C8DFF")), PropertyFactory.circleRadius(8f),
                 PropertyFactory.circleStrokeColor(Color.WHITE), PropertyFactory.circleStrokeWidth(3f))
         })
+        addLayer(LayerSpec(MapIds.Layer.ME_ARROW, LogicalGroup.NAV_CURRENT_LOCATION, MapIds.Source.ME, false) {
+            SymbolLayer(MapIds.Layer.ME_ARROW, MapIds.Source.ME).withProperties(
+                PropertyFactory.iconImage(MapIds.Image.ARROW_SELECTED),
+                PropertyFactory.iconRotate(Expression.get(MapIds.Prop.HEADING)),
+                PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP), // true bearing: stays geographic when the camera rotates
+                PropertyFactory.iconSize(1.25f),
+                PropertyFactory.iconAllowOverlap(true), PropertyFactory.iconIgnorePlacement(true)
+            ).also { it.setFilter(trueExpr(MapIds.Prop.HAS_HEADING)) }
+        })
         // 4. Vehicle communication: halos/rings underneath, direction arrows on top.
         addLayer(LayerSpec(MapIds.Layer.VEH_EMERGENCY_HALO, LogicalGroup.VEH_EMERGENCY, MapIds.Source.VEHICLES, false) {
             CircleLayer(MapIds.Layer.VEH_EMERGENCY_HALO, MapIds.Source.VEHICLES).withProperties(

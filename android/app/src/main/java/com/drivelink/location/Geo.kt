@@ -10,6 +10,12 @@ data class LocationSample(
     val bearing: Double,
     val accuracyM: Double,
     val timestampMs: Long,
+    /** Extra GPS metadata (defaults keep peer samples and tests unchanged). */
+    val hasSpeed: Boolean = true,
+    val hasCourse: Boolean = false,
+    val speedAccuracyMps: Double = -1.0,
+    val fixAgeMs: Long = 0L,
+    val fixTimeMs: Long = timestampMs,
 )
 
 data class Vec2(val x: Double, val y: Double)
