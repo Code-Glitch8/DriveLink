@@ -54,7 +54,7 @@ class OsrmRoutingProvider(
         fun buildUrl(baseUrl: String, fromLat: Double, fromLon: Double, toLat: Double, toLon: Double): String =
             "${baseUrl.trimEnd('/')}/route/v1/driving/" +
                 String.format(Locale.US, "%.6f,%.6f;%.6f,%.6f", fromLon, fromLat, toLon, toLat) +
-                "?overview=full&geometries=polyline6&steps=true&alternatives=true"
+                "?overview=full&geometries=polyline6&steps=true&alternatives=3"
 
         /** Pure parser, unit-tested without a network. */
         fun parse(body: String): RoutePlan {
@@ -66,31 +66,37 @@ class OsrmRoutingProvider(
             }
             val routes = o.optJSONArray("routes")
             if (routes == null || routes.length() == 0) throw NoRouteException()
-            val best = routes.getJSONObject(0)
-            val leg = best.getJSONArray("legs").getJSONObject(0)
-            val steps = leg.optJSONArray("steps")
-            val list = ArrayList<RouteStep>()
-            if (steps != null) {
-                // OSRM step i describes the maneuver at its START and runs until step i+1's maneuver, which matches
-                // RouteStep's "instruction + where this step ends". The final "arrive" step only supplies the end point.
-                for (i in 0 until steps.length() - 1) {
-                    val s = steps.getJSONObject(i)
-                    val next = steps.getJSONObject(i + 1).getJSONObject("maneuver").getJSONArray("location")
-                    val m = s.getJSONObject("maneuver")
-                    list += RouteStep(
-                        instruction(m.optString("type"), m.optString("modifier"), s.optString("name"), m.optInt("exit", 0)),
-                        next.getDouble(1), next.getDouble(0), formatDistance(s.optDouble("distance", 0.0)))
+            val options = ArrayList<RouteOption>()
+            for (ri in 0 until routes.length()) {
+                val r = routes.getJSONObject(ri)
+                val leg = r.getJSONArray("legs").getJSONObject(0)
+                val steps = leg.optJSONArray("steps")
+                val list = ArrayList<RouteStep>()
+                val named = ArrayList<Pair<String, Double>>()
+                if (steps != null) {
+                    // OSRM step i describes the maneuver at its START and runs until step i+1's maneuver, which matches
+                    // RouteStep's "instruction + where this step ends". The final "arrive" step only supplies the end point.
+                    for (i in 0 until steps.length() - 1) {
+                        val s = steps.getJSONObject(i)
+                        val next = steps.getJSONObject(i + 1).getJSONObject("maneuver").getJSONArray("location")
+                        val m = s.getJSONObject("maneuver")
+                        list += RouteStep(
+                            instruction(m.optString("type"), m.optString("modifier"), s.optString("name"), m.optInt("exit", 0)),
+                            next.getDouble(1), next.getDouble(0), formatDistance(s.optDouble("distance", 0.0)))
+                    }
+                    for (i in 0 until steps.length()) steps.getJSONObject(i).let { named += it.optString("name") to it.optDouble("distance", 0.0) }
                 }
+                options += RouteOption(
+                    id = ri, kind = RouteKind.ALTERNATIVE,
+                    points = NavigationHelper.decodePolyline(r.getString("geometry"), 1e6),
+                    distanceM = r.optDouble("distance", 0.0), durationS = r.optDouble("duration", 0.0),
+                    roads = RouteUtil.majorRoads(named), steps = list)
             }
-            val alternatives = (1 until routes.length()).map {
-                NavigationHelper.decodePolyline(routes.getJSONObject(it).getString("geometry"), 1e6)
-            }
+            val labelled = RouteUtil.label(RouteUtil.dropNearDuplicates(options))
+            val main = labelled.first()
             return RoutePlan(
-                points = NavigationHelper.decodePolyline(best.getString("geometry"), 1e6),
-                distanceText = formatDistance(best.optDouble("distance", 0.0)),
-                durationText = formatDuration(best.optDouble("duration", 0.0)),
-                steps = list,
-                alternatives = alternatives,
+                points = main.points, distanceText = main.distanceText, durationText = main.durationText, steps = main.steps,
+                alternatives = labelled.drop(1).map { it.points }, options = labelled, selected = 0,
             )
         }
 

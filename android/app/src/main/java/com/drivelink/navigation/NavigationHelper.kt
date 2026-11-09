@@ -19,13 +19,47 @@ data class Place(
     val category: PlaceCategory = PlaceCategory.OTHER,
 )
 data class RouteStep(val instruction: String, val endLat: Double, val endLon: Double, val distanceText: String)
+enum class RouteKind(val label: String) { FASTEST("Fastest"), SHORTEST("Shortest"), ALTERNATIVE("Alternative") }
+
+/** One candidate route. [roads] are the major named roads it uses, in driving order. */
+data class RouteOption(
+    val id: Int,
+    val kind: RouteKind,
+    val points: List<Pair<Double, Double>>,
+    val distanceM: Double,
+    val durationS: Double,
+    val roads: List<String>,
+    val steps: List<RouteStep>,
+) {
+    val distanceText: String get() = OsrmRoutingProvider.formatDistance(distanceM)
+    val durationText: String get() = OsrmRoutingProvider.formatDuration(durationS)
+}
+
+/**
+ * The routing result. The top-level fields always describe the SELECTED option (so existing screens keep working);
+ * [options] lists every candidate and [selected] is the index of the chosen one in it.
+ */
 data class RoutePlan(
     val points: List<Pair<Double, Double>>,
     val distanceText: String,
     val durationText: String,
     val steps: List<RouteStep>,
     val alternatives: List<List<Pair<Double, Double>>> = emptyList(),
-)
+    val options: List<RouteOption> = emptyList(),
+    val selected: Int = 0,
+) {
+    val selectedOption: RouteOption? get() = options.getOrNull(selected)
+
+    /** Same plan with option [index] as the main route; the others become the drawn alternatives (same order). */
+    fun select(index: Int): RoutePlan {
+        val o = options.getOrNull(index) ?: return this
+        return copy(points = o.points, distanceText = o.distanceText, durationText = o.durationText, steps = o.steps,
+            alternatives = options.filterIndexed { i, _ -> i != index }.map { it.points }, selected = index)
+    }
+
+    /** Maps "k-th alternative line on the map" back to an index in [options]. */
+    fun optionIndexOfAlternative(k: Int): Int? = options.indices.filter { it != selected }.getOrNull(k)
+}
 
 /**
  * Facade used by the UI. Search: Android Geocoder first, Nominatim (OpenStreetMap) as a fallback.

@@ -64,7 +64,7 @@ class MapAndRoutingTest {
 
     @Test fun osrmUrlUsesLonLatOrderAndTrimsBase() {
         val u = OsrmRoutingProvider.buildUrl("https://example.org/", 28.6139, 77.2090, 28.62, 77.23)
-        assertEquals("https://example.org/route/v1/driving/77.209000,28.613900;77.230000,28.620000?overview=full&geometries=polyline6&steps=true&alternatives=true", u)
+        assertEquals("https://example.org/route/v1/driving/77.209000,28.613900;77.230000,28.620000?overview=full&geometries=polyline6&steps=true&alternatives=3", u)
     }
 
     @Test fun formatting() {
