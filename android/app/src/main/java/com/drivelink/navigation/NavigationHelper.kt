@@ -7,7 +7,17 @@ import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-data class Place(val name: String, val lat: Double, val lon: Double)
+enum class PlaceCategory(val label: String) {
+    LANDMARK("Landmark"), ADDRESS("Address"), CITY("City / area"), TRANSPORT("Transport"), FOOD("Food & drink"), SHOP("Shop"),
+    FUEL("Fuel & charging"), HEALTH("Health"), LODGING("Hotel"), PARK("Park"), EDUCATION("Education"), OTHER("Place")
+}
+
+/** A search result / destination. [subtitle] carries the locality so same-named places can be told apart. */
+data class Place(
+    val name: String, val lat: Double, val lon: Double,
+    val subtitle: String? = null,
+    val category: PlaceCategory = PlaceCategory.OTHER,
+)
 data class RouteStep(val instruction: String, val endLat: Double, val endLon: Double, val distanceText: String)
 data class RoutePlan(
     val points: List<Pair<Double, Double>>,

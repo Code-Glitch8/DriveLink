@@ -31,6 +31,7 @@ android {
         buildConfigField("String", "MAP_STYLE_LIGHT_URL", "\"${cfg("MAP_STYLE_LIGHT_URL", "https://tiles.openfreemap.org/styles/liberty")}\"")
         buildConfigField("String", "MAP_STYLE_DARK_URL", "\"${cfg("MAP_STYLE_DARK_URL", "https://tiles.openfreemap.org/styles/dark")}\"")
         buildConfigField("String", "ROUTING_BASE_URL", "\"${cfg("ROUTING_BASE_URL", "https://router.project-osrm.org")}\"")
+        buildConfigField("String", "PHOTON_BASE_URL", "\"${cfg("PHOTON_BASE_URL", "https://photon.komoot.io")}\"")
         buildConfigField("String", "GEOCODER_BASE_URL", "\"${cfg("GEOCODER_BASE_URL", "https://nominatim.openstreetmap.org")}\"")
         buildConfigField("String", "CRED_PUBLIC_KEY_B64", "\"${cfg("CRED_PUBLIC_KEY_B64")}\"")
     }

@@ -11,3 +11,5 @@ CRED_PUBLIC_KEY_B64=
 # MAP_STYLE_DARK_URL=https://tiles.openfreemap.org/styles/dark
 # ROUTING_BASE_URL=https://router.project-osrm.org
 # GEOCODER_BASE_URL=https://nominatim.openstreetmap.org
+# Autocomplete geocoder (Photon, OSM data). Public server is fair-use only; self-host for heavy traffic.
+# PHOTON_BASE_URL=https://photon.komoot.io
