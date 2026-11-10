@@ -1,0 +1,48 @@
+name: CI diagnostics (temporary)
+on:
+  push: { branches: [feature/pro-ui-hazards-search] }
+permissions: { contents: write }
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: android } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+        with: { packages: '' }
+      - run: yes | sdkmanager --licenses >/dev/null; sdkmanager "platforms;android-34" "build-tools;34.0.0" >/dev/null
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.7' }
+      - name: Build and test
+        run: |
+          echo "SUPABASE_URL=" > drivelink.properties
+          set +e
+          gradle assembleDebug --console=plain > "$RUNNER_TEMP/build.log" 2>&1; echo $? > "$RUNNER_TEMP/build.rc"
+          gradle testDebugUnitTest --console=plain > "$RUNNER_TEMP/test.log" 2>&1; echo $? > "$RUNNER_TEMP/test.rc"
+          exit 0
+      - name: Publish report
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          R=report.md
+          { echo "# CI report for $GITHUB_SHA"; echo; echo "build exit: $(cat $RUNNER_TEMP/build.rc)"; echo "test exit: $(cat $RUNNER_TEMP/test.rc)"; echo
+            echo '## build errors/warnings'; grep -E "^e: |error:|FAILED|BUILD (SUCCESSFUL|FAILED)" "$RUNNER_TEMP/build.log" | head -80
+            echo '## test summary'; grep -E "FAILED|tests completed|BUILD (SUCCESSFUL|FAILED)|^e: " "$RUNNER_TEMP/test.log" | head -80
+            echo '## test results'
+            python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          t=f=e=s=0
+          for p in glob.glob('android/app/build/test-results/testDebugUnitTest/*.xml'):
+              r=ET.parse(p).getroot(); t+=int(r.get('tests'));f+=int(r.get('failures'));e+=int(r.get('errors'));s+=int(r.get('skipped'))
+              for c in r.iter('testcase'):
+                  for x in list(c):
+                      if x.tag in('failure','error'): print('FAIL',c.get('classname'),c.get('name'),(x.get('message') or '')[:200])
+          print(f'tests={t} failures={f} errors={e} skipped={s}')
+          PY
+          } > $R
+          git config user.name ci; git config user.email ci@example.com
+          git checkout --orphan ci-report-tmp; git rm -rf . >/dev/null 2>&1 || true
+          mv $R report.md 2>/dev/null || true
+          git add report.md; git commit -m "ci report $GITHUB_SHA" >/dev/null
+          git push -f origin HEAD:ci-report
