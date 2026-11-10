@@ -82,6 +82,7 @@ object MapIds {
         const val MERGE = "merge"
         const val KIND = "kind"
         const val HAS_HEADING = "hasHeading"
+        const val IDX = "idx"
         const val SEVERE = "severe"
     }
 }

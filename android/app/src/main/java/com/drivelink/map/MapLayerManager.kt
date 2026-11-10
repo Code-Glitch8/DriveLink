@@ -236,7 +236,10 @@ class MapLayerManager {
 
         addLayer(LayerSpec(MapIds.Layer.ROUTE_ALT, LogicalGroup.NAV_ROUTE_ALT, MapIds.Source.ROUTE_ALT, true) {
             LineLayer(MapIds.Layer.ROUTE_ALT, MapIds.Source.ROUTE_ALT).withProperties(
-                PropertyFactory.lineColor(c("#8FA3C4")), PropertyFactory.lineWidth(6f), PropertyFactory.lineOpacity(0.75f),
+                // Each alternative gets its own colour + a dash so lines stay distinguishable from the solid selected route.
+                PropertyFactory.lineColor(Expression.match(Expression.get(MapIds.Prop.IDX), Expression.color(c("#8FA3C4")),
+                    Expression.stop(0, Expression.color(c("#8E6CEF"))), Expression.stop(1, Expression.color(c("#14B8A6"))), Expression.stop(2, Expression.color(c("#F59E0B"))))),
+                PropertyFactory.lineWidth(6f), PropertyFactory.lineOpacity(0.85f), PropertyFactory.lineDasharray(arrayOf(2f, 1.5f)),
                 PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND))
         })
         addLayer(LayerSpec(MapIds.Layer.ROUTE_CASING, LogicalGroup.NAV_ROUTE_CASING, MapIds.Source.ROUTE_MAIN, true) {

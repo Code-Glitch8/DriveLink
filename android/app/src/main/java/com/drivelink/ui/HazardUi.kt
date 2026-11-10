@@ -128,3 +128,18 @@ fun HazardBanner(h: Hazard, distanceM: Double, modifier: Modifier = Modifier) {
         }
     }
 }
+
+/** Local broadcast kind for the existing phone-to-phone HAZARD_ALERT message. */
+fun HazardCategory.nearbyKind(): String = when (this) {
+    HazardCategory.ACCIDENT -> "ACCIDENT"
+    HazardCategory.ROAD_BLOCKAGE -> "OBSTRUCTION"
+    HazardCategory.POTHOLE -> "ROAD_DAMAGE"
+    HazardCategory.VEHICLE_BREAKDOWN -> "BROKEN_DOWN"
+    HazardCategory.ROAD_CLOSURE -> "ROAD_CLOSURE"
+    HazardCategory.CONSTRUCTION, HazardCategory.TRAFFIC_CONGESTION, HazardCategory.OTHER_DANGER -> "OTHER"
+}
+
+/** Wall-clock that ticks every [periodMs] so expiry-based filters re-run even when no data changes. */
+@Composable
+fun rememberNow(periodMs: Long = 10_000L): androidx.compose.runtime.State<Long> =
+    androidx.compose.runtime.produceState(System.currentTimeMillis()) { while (true) { kotlinx.coroutines.delay(periodMs); value = System.currentTimeMillis() } }

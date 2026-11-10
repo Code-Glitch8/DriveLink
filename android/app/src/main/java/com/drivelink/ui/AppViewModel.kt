@@ -12,6 +12,8 @@ import com.drivelink.authentication.Session
 import com.drivelink.hazards.HazardArea
 import com.drivelink.hazards.HazardCategory
 import com.drivelink.hazards.HazardRepository
+import com.drivelink.search.SearchState
+import com.drivelink.search.SmartSearch
 import com.drivelink.authentication.SessionStore
 import com.drivelink.authentication.SupabaseApi
 import com.drivelink.driving.JourneyConfig
@@ -223,6 +225,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         } catch (_: Exception) {}
     }
 
+    // ---- smart search (debounced Photon autocomplete) ----
+    private val smartSearch = SmartSearch(viewModelScope)
+    val searchState: StateFlow<SearchState> = smartSearch.state
+
+    /** Call on every keystroke; biased toward the user's position so nearby places rank first. */
+    fun onQueryChanged(text: String) { val st = _ui.value; smartSearch.onQuery(text, st.myLat, st.myLon) }
+    fun submitQuery(text: String) { val st = _ui.value; smartSearch.onQuery(text, st.myLat, st.myLon, immediate = true) }
+    fun clearSearch() = smartSearch.clear()
+
+    /** Pick another candidate route from the options list. */
+    fun selectRoute(index: Int) = _ui.update { st -> st.copy(route = st.route?.select(index), stepIndex = 0) }
+
     fun search(q: String) = launchBusy {
         val r = NavigationHelper.search(getApplication(), q)
         _ui.update { it.copy(searchResults = r) }
@@ -230,6 +244,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun pickDestination(p: Place) {
+        smartSearch.clear()
         _ui.update { it.copy(destination = p, searchResults = emptyList(), route = null, stepIndex = 0) }
         previewRoute()
     }
@@ -242,6 +257,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         launchBusy {
             val r = NavigationHelper.route(lat, lon, dest)
             _ui.update { it.copy(route = r, stepIndex = 0) }
+            HazardRepository.refreshNow() // fetch hazards along the new route straight away
         }
     }
 

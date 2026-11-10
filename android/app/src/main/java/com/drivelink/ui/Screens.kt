@@ -74,6 +74,11 @@ import com.drivelink.map.MapStatus
 import com.drivelink.map.MapStatusBanner
 import com.drivelink.map.MapVehicleMapper
 import com.drivelink.navigation.NavigationHelper
+import com.drivelink.navigation.RouteAdvisor
+import com.drivelink.hazards.Hazard
+import com.drivelink.hazards.HazardGeometry
+import com.drivelink.hazards.HazardRepository
+import com.drivelink.map.MapHazardMapper
 import com.drivelink.orientation.CameraUpdateGate
 import com.drivelink.orientation.HeadingTracker
 import com.drivelink.orientation.MapOrientationMode
@@ -150,6 +155,14 @@ fun HomeScreen(st: UiState, vm: AppViewModel, requestLocation: () -> Unit) {
     var mapStatus by remember { mutableStateOf<MapStatus>(MapStatus.Loading) }
     var showDebug by remember { mutableStateOf(false) }
     val density = LocalDensity.current
+    val searchState by vm.searchState.collectAsState()
+    val hazardList by HazardRepository.hazards.collectAsState()
+    val nowMs by rememberNow()
+    val mapHazards = remember(hazardList, nowMs) { MapHazardMapper.from(hazardList, nowMs) }
+    var hazardDetail by remember { mutableStateOf<Hazard?>(null) }
+    var showReport by remember { mutableStateOf(false) }
+    val routeAssessments = remember(st.route, hazardList, nowMs) { st.route?.options?.map { RouteAdvisor.assess(it, hazardList, nowMs) }.orEmpty() }
+    val routeAdvice = remember(st.route, hazardList, nowMs) { st.route?.let { RouteAdvisor.advise(it.options, it.selected, hazardList, nowMs) } ?: RouteAdvisor.advise(emptyList(), 0, emptyList(), nowMs) }
     LaunchedEffect(Unit) { requestLocation(); vm.refreshLocation() }
     LaunchedEffect(st.myLat, st.myLon) {
         val la = st.myLat; val lo = st.myLon
@@ -169,30 +182,31 @@ fun HomeScreen(st: UiState, vm: AppViewModel, requestLocation: () -> Unit) {
     Box(Modifier.fillMaxSize()) {
         // No real vehicles exist before a journey starts (they come from Nearby Connections), so none are drawn here.
         DriveLinkMap(handle = handle, dark = st.darkTheme, me = me, destination = dest, route = route,
-            vehicles = emptyList(), selectedVehicleId = null, camera = camera, onStatus = { mapStatus = it })
+            vehicles = emptyList(), hazards = mapHazards, selectedVehicleId = null, camera = camera, onStatus = { mapStatus = it },
+            onHazardTap = { id -> hazardList.firstOrNull { it.id == id }?.let { hazardDetail = it } })
         Column(Modifier.statusBarsPadding().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            AppCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedTextField(query, { query = it }, placeholder = { Text("Where to?") }, singleLine = true, shape = Pill, modifier = Modifier.weight(1f))
-                        Spacer(Modifier.width(8.dp))
-                        Button({ if (query.isNotBlank()) vm.search(query) }, enabled = !st.busy, shape = Pill) { Text("Go") }
-                    }
-                    st.searchResults.forEach { p ->
-                        Text(p.name, Modifier.fillMaxWidth().clickable { vm.pickDestination(p) }.padding(horizontal = 8.dp, vertical = 11.dp), maxLines = 2, fontSize = 14.sp)
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
-                    }
-                    Msg(st)
-                }
-            }
+            SmartSearchBar(query, { query = it; vm.onQueryChanged(it) }, { vm.submitQuery(query) }, searchState,
+                onPick = { p -> query = p.name; vm.pickDestination(p) }, onRetry = { vm.submitQuery(query) })
+            Msg(st)
             st.destination?.let { d ->
                 AppCard(Modifier.fillMaxWidth()) {
-                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Column(Modifier.weight(1f)) {
-                            Text(d.name, fontSize = 14.sp, maxLines = 2, fontWeight = FontWeight.SemiBold)
-                            st.route?.let { Text("${it.distanceText} · ${it.durationText}", fontSize = 13.sp, color = MaterialTheme.colorScheme.primary) }
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(Modifier.weight(1f)) {
+                                Text(d.name, fontSize = 15.sp, maxLines = 2, fontWeight = FontWeight.SemiBold)
+                                d.subtitle?.let { Text(it, fontSize = 12.sp, maxLines = 1, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            }
+                            TextButton({ vm.clearDestination(); query = "" }) { Text("Clear") }
                         }
-                        TextButton({ vm.clearDestination() }) { Text("Clear") }
+                        val plan = st.route
+                        if (plan != null && plan.options.isNotEmpty()) {
+                            RouteOptionCards(plan.options, plan.selected, routeAssessments, { vm.selectRoute(it) })
+                            RouteAdviceCard(routeAdvice, { vm.selectRoute(it) })
+                        } else if (plan != null) {
+                            Text("${plan.distanceText} · ${plan.durationText}", fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
+                        } else if (st.busy) {
+                            Text("Finding routes…", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
@@ -224,12 +238,25 @@ fun HomeScreen(st: UiState, vm: AppViewModel, requestLocation: () -> Unit) {
                     }
                     GradientButton("Start journey", { vm.go(Screen.CONFIRM) }, Modifier.fillMaxWidth())
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        FilledTonalButton({ showReport = true }, Modifier.weight(1f)) { Text("⚠ Report") }
                         FilledTonalButton({ vm.go(Screen.VEHICLES) }, Modifier.weight(1f)) { Text("Vehicles") }
                         FilledTonalButton({ vm.go(Screen.SETTINGS) }, Modifier.weight(1f)) { Text("Settings") }
                     }
                 }
             }
         }
+    }
+    HomeHazardDialogs(vm, st, hazardDetail, showReport, nowMs, { hazardDetail = it }, { showReport = it })
+}
+
+// Hazard dialogs shared by the Home screen (parked, so details and reporting are always safe here).
+@Composable
+private fun HomeHazardDialogs(vm: AppViewModel, st: UiState, hazardDetail: Hazard?, showReport: Boolean, nowMs: Long, onDetail: (Hazard?) -> Unit, onReport: (Boolean) -> Unit) {
+    if (showReport) HazardReportDialog(onPick = { c -> onReport(false); vm.reportHazard(c, null) }, onDismiss = { onReport(false) })
+    hazardDetail?.let { h ->
+        val la = st.myLat; val lo = st.myLon
+        HazardDetailDialog(h, if (la != null && lo != null) Geo.distanceM(la, lo, h.lat, h.lon) else null, nowMs,
+            onConfirm = { vm.voteHazard(h.id, "confirm"); onDetail(null) }, onClear = { vm.voteHazard(h.id, "clear"); onDetail(null) }, onDismiss = { onDetail(null) })
     }
 }
 
@@ -294,6 +321,16 @@ fun DashboardScreen(st: UiState, vm: AppViewModel, onEnd: () -> Unit) {
         lifecycleOwner.lifecycle.addObserver(obs)
         onDispose { lifecycleOwner.lifecycle.removeObserver(obs); if (held) HeadingTracker.release() }
     }
+    // Shared hazards: active only (expired ones are dropped on every tick), details only while (nearly) stopped.
+    val hazardList by HazardRepository.hazards.collectAsState()
+    val nowMs by rememberNow()
+    val mapHazards = remember(hazardList, nowMs) { MapHazardMapper.from(hazardList, nowMs) }
+    val moving = (j.self?.speedKmh ?: 0.0) >= 5.0
+    var hazardDetail by remember { mutableStateOf<Hazard?>(null) }
+    val closeHazard = remember(hazardList, j.self?.lat, j.self?.lon, heading.deg, moving, nowMs) {
+        j.self?.let { s -> HazardGeometry.nearbyRelevant(hazardList, s.lat, s.lon, heading.deg, moving, nowMs)
+            .filter { it.first.category.severity >= 2 }.firstOrNull() }
+    }
     var orientMode by remember { mutableStateOf(MapOrientationSession.mode) }
     var following by remember { mutableStateOf(true) }
     val gate = remember { CameraUpdateGate() }
@@ -322,12 +359,18 @@ fun DashboardScreen(st: UiState, vm: AppViewModel, onEnd: () -> Unit) {
         val step = st.route?.steps?.getOrNull(st.stepIndex)
         if (step != null) Banner("${step.instruction} (${step.distanceText})", MaterialTheme.colorScheme.primary)
         j.dataQualityWarning?.let { Banner(it, levelColor(1)) }
-        j.alerts.take(3).forEach { a -> AlertCard(a) }
+        j.mergeAlerts.forEach { MergeAlertBanner(it) }
+        closeHazard?.let { (h, d) -> HazardBanner(h, d) }
+        j.alerts.take(2).forEach { a -> AlertCard(a) }
 
         Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp))) {
             if (mapMode) {
                 DriveLinkMap(handle = handle, dark = st.darkTheme, me = dashMe, destination = dashDest, route = dashRoute,
-                    vehicles = mapVehicles, selectedVehicleId = detail?.sid, camera = followCam,
+                    vehicles = mapVehicles, hazards = mapHazards, selectedVehicleId = detail?.sid, camera = followCam,
+                    onHazardTap = { id ->
+                        if (moving) vm.toast("Stop to view hazard details")
+                        else hazardList.firstOrNull { it.id == id }?.let { hazardDetail = it }
+                    },
                     onVehicleTap = { id -> detail = id?.let { sid -> j.peers.firstOrNull { it.sid == sid } } },
                     onStatus = { mapStatus = it }, onUserGesture = { following = false })
                 OrientationControls(orientMode, following,
@@ -355,6 +398,7 @@ fun DashboardScreen(st: UiState, vm: AppViewModel, onEnd: () -> Unit) {
                 OutlinedButton({ detail = p }, Modifier.weight(1f), shape = Pill) { Text("${p.distanceM.toInt()} m ${p.direction}", fontSize = 12.sp, maxLines = 1) }
             }
         }
+        j.myMerge?.let { MyMergeBar(it, { JourneyManager.cancelLaneChange() }) }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilledTonalButton({ JourneyManager.sendLaneChange("LEFT") }, Modifier.weight(1f).height(60.dp), shape = RoundedCornerShape(16.dp)) { Text("◀ Merge", fontSize = 15.sp) }
             FilledTonalButton({ JourneyManager.sendLaneChange("RIGHT") }, Modifier.weight(1f).height(60.dp), shape = RoundedCornerShape(16.dp)) { Text("Merge ▶", fontSize = 15.sp) }
@@ -377,15 +421,19 @@ fun DashboardScreen(st: UiState, vm: AppViewModel, onEnd: () -> Unit) {
         title = { Text("Confirm") }, text = { Text("Confirm that you want to disable journey monitoring and communication.") },
         confirmButton = { TextButton({ confirm2 = false; onEnd() }) { Text("Confirm") } },
         dismissButton = { TextButton({ confirm2 = false }) { Text("Cancel") } })
-    if (hazards) AlertDialog(onDismissRequest = { hazards = false }, shape = RoundedCornerShape(24.dp), title = { Text("Report hazard") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("ACCIDENT" to "Accident", "OBSTRUCTION" to "Obstruction", "BROKEN_DOWN" to "Broken-down vehicle",
-                    "ROAD_DAMAGE" to "Road damage", "ROAD_CLOSURE" to "Road closure", "OTHER" to "Other hazard").forEach { (k, label) ->
-                    FilledTonalButton({ JourneyManager.sendHazard(k); hazards = false }, Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(14.dp)) { Text(label) }
-                }
-            }
-        }, confirmButton = {}, dismissButton = { TextButton({ hazards = false }) { Text("Cancel") } })
+    if (hazards) HazardReportDialog(
+        onPick = { c ->
+            hazards = false
+            vm.reportHazard(c, null)                  // shared with everyone relevant via Supabase
+            JourneyManager.sendHazard(c.nearbyKind()) // instant phone-to-phone alert to linked vehicles
+        }, onDismiss = { hazards = false })
+    hazardDetail?.let { h ->
+        val me0 = j.self
+        HazardDetailDialog(h, me0?.let { Geo.distanceM(it.lat, it.lon, h.lat, h.lon) }, nowMs,
+            onConfirm = { vm.voteHazard(h.id, "confirm"); hazardDetail = null },
+            onClear = { vm.voteHazard(h.id, "clear"); hazardDetail = null },
+            onDismiss = { hazardDetail = null })
+    }
     detail?.let { p ->
         AlertDialog(onDismissRequest = { detail = null }, shape = RoundedCornerShape(24.dp), title = { Text("Nearby vehicle") },
             text = {

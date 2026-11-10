@@ -48,7 +48,9 @@ object MapGeoJson {
         line(route?.main.orEmpty())?.let { FeatureCollection.fromFeature(it) } ?: EMPTY
 
     fun routeAlternatives(route: MapRoute?): FeatureCollection =
-        FeatureCollection.fromFeatures(route?.alternatives.orEmpty().mapNotNull { line(it) })
+        FeatureCollection.fromFeatures(route?.alternatives.orEmpty().mapIndexedNotNull { i, pts ->
+            line(pts)?.also { it.addNumberProperty(MapIds.Prop.IDX, i) } // index drives the per-alternative colour
+        })
 
     fun destination(d: MapDestination?): FeatureCollection =
         d?.let { FeatureCollection.fromFeature(point(it.lat, it.lon)) } ?: EMPTY
