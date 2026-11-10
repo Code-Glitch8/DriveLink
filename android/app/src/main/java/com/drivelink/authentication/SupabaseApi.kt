@@ -123,5 +123,8 @@ object SupabaseApi {
         return o.getString("payload") to o.getString("sig")
     }
 
+    /** Calls a Postgres function through PostgREST. Returns the raw JSON body. */
+    suspend fun rpc(name: String, body: JSONObject, token: String): String = call("POST", "/rest/v1/rpc/$name", body.toString(), token)
+
     suspend fun deleteAccount(token: String) { call("POST", "/functions/v1/delete-account", "{}", token) }
 }

@@ -28,6 +28,8 @@ class VehicleTracker {
         vehicles[sid] = TrackedVehicle(sid, vehicleType, sample, emergencyType)
     }
 
+    fun sample(sid: String): LocationSample? = vehicles[sid]?.sample
+
     fun remove(sid: String) { vehicles.remove(sid) }
     fun clear() = vehicles.clear()
 

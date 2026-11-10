@@ -39,7 +39,11 @@ object CommunicationProtocol {
                 else -> null
             }
         }
-        MessageType.LANE_CHANGE_REQUEST -> if (b.optString("dir") in setOf("LEFT", "RIGHT")) null else "bad dir"
+        MessageType.LANE_CHANGE_REQUEST -> when {
+            b.optString("dir") !in setOf("LEFT", "RIGHT") -> "bad dir"
+            b.has("act") && b.optString("act") !in setOf("REQUEST", "CANCEL") -> "bad act" // "act" is optional: older peers send only dir
+            else -> null
+        }
         MessageType.EMERGENCY_ALERT -> if (b.optString("etype") in EMERGENCY_TYPES) null else "bad etype"
         MessageType.HAZARD_ALERT -> {
             val lat = b.optDouble("lat", Double.NaN); val lon = b.optDouble("lon", Double.NaN)

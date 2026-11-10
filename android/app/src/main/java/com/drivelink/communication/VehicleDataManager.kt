@@ -6,7 +6,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 sealed class PeerEvent {
     data class Status(val sid: String, val vehicleType: String, val sample: LocationSample, val emergencyType: String?) : PeerEvent()
-    data class LaneChange(val sid: String, val direction: String) : PeerEvent()
+    data class LaneChange(val sid: String, val direction: String, val cancel: Boolean = false) : PeerEvent()
     data class Emergency(val sid: String, val etype: String, val verified: Boolean) : PeerEvent()
     data class Hazard(val sid: String, val kind: String, val lat: Double, val lon: Double) : PeerEvent()
     data class PeerAuthenticated(val sid: String) : PeerEvent()
@@ -36,8 +36,9 @@ class VehicleDataManager(
         JSONObject().put("lat", s.lat).put("lon", s.lon).put("spd", s.speedKmh.coerceIn(0.0, 400.0))
             .put("hdg", s.bearing.coerceIn(0.0, 360.0)).put("acc", s.accuracyM).toString())
 
-    fun laneChange(direction: String): ByteArray =
-        build(MessageType.LANE_CHANGE_REQUEST, JSONObject().put("dir", direction).toString())
+    /** [cancel] withdraws an earlier request for the same direction. Advisory only; carries no vehicle-control meaning. */
+    fun laneChange(direction: String, cancel: Boolean = false): ByteArray =
+        build(MessageType.LANE_CHANGE_REQUEST, JSONObject().put("dir", direction).put("act", if (cancel) "CANCEL" else "REQUEST").toString())
 
     fun emergency(etype: String): ByteArray =
         build(MessageType.EMERGENCY_ALERT, JSONObject().put("etype", etype).toString())
@@ -77,7 +78,7 @@ class VehicleDataManager(
             MessageType.VEHICLE_STATUS -> onEvent(PeerEvent.Status(id.sid, id.vehicleType,
                 LocationSample(body.getDouble("lat"), body.getDouble("lon"), body.getDouble("spd"),
                     body.getDouble("hdg"), body.getDouble("acc"), now), verifiedEmergency))
-            MessageType.LANE_CHANGE_REQUEST -> onEvent(PeerEvent.LaneChange(id.sid, body.getString("dir")))
+            MessageType.LANE_CHANGE_REQUEST -> onEvent(PeerEvent.LaneChange(id.sid, body.getString("dir"), body.optString("act", "REQUEST") == "CANCEL"))
             MessageType.EMERGENCY_ALERT -> {
                 val etype = body.getString("etype")
                 onEvent(PeerEvent.Emergency(id.sid, etype, verifiedEmergency == etype))

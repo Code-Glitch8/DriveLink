@@ -10,7 +10,7 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 
 /**
- * Fused location with adaptive rate: ~1 s while moving, ~5 s while stationary. Always check accuracyM before
+ * Fused location with adaptive rate: ~1 s while moving, ~2 s while stationary. Always check accuracyM before
  * trusting a fix; smartphone GPS is not lane-accurate.
  */
 class LocationProvider(context: Context) {
@@ -30,9 +30,14 @@ class LocationProvider(context: Context) {
                 lastBearing,
                 if (loc.hasAccuracy()) loc.accuracy.toDouble() else 9999.0,
                 System.currentTimeMillis(),
+                hasSpeed = loc.hasSpeed(),
+                hasCourse = loc.hasBearing() && loc.speed > 1.0f,
+                speedAccuracyMps = if (android.os.Build.VERSION.SDK_INT >= 26 && loc.hasSpeedAccuracy()) loc.speedAccuracyMetersPerSecond.toDouble() else -1.0,
+                fixAgeMs = ((android.os.SystemClock.elapsedRealtimeNanos() - loc.elapsedRealtimeNanos) / 1_000_000L).coerceAtLeast(0L),
+                fixTimeMs = loc.elapsedRealtimeNanos / 1_000_000L,
             )
             onSample?.invoke(s)
-            val wanted = if (s.speedKmh > 3.0) 1000L else 5000L
+            val wanted = if (s.speedKmh > 3.0) 1000L else 2000L
             if (wanted != intervalMs && running) { intervalMs = wanted; request() }
         }
     }

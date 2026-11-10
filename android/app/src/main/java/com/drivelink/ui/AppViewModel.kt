@@ -9,6 +9,11 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.drivelink.authentication.Session
+import com.drivelink.hazards.HazardArea
+import com.drivelink.hazards.HazardCategory
+import com.drivelink.hazards.HazardRepository
+import com.drivelink.search.SearchState
+import com.drivelink.search.SmartSearch
 import com.drivelink.authentication.SessionStore
 import com.drivelink.authentication.SupabaseApi
 import com.drivelink.driving.JourneyConfig
@@ -107,6 +112,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun signOut() {
         JourneyManager.stop()
+        stopHazardSync()
         store.clear()
         _ui.update { UiState(darkTheme = it.darkTheme, voiceAlerts = it.voiceAlerts) }
     }
@@ -122,6 +128,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- data ----
     fun loadAll() = viewModelScope.launch {
+        startHazardSync()
         try {
             val t = token(); val uid = _ui.value.session!!.userId
             val vehicles = SupabaseApi.listVehicles(t)
@@ -166,6 +173,44 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { try { SupabaseApi.updateSettings(token(), _ui.value.session!!.userId, JSONObject().put("voice_alerts", on)) } catch (_: Exception) {} }
     }
 
+    // ---- shared hazards ----
+    private var hazardJobStarted = false
+    private fun startHazardSync() {
+        if (hazardJobStarted) return
+        hazardJobStarted = true
+        HazardRepository.start(viewModelScope, { try { token() } catch (_: Exception) { null } }) {
+            val j = JourneyManager.state.value.self
+            val st = _ui.value
+            val lat = j?.lat ?: st.myLat; val lon = j?.lon ?: st.myLon
+            if (lat == null || lon == null) null
+            else HazardArea(lat, lon, j?.speedKmh ?: 0.0, st.route?.points)
+        }
+    }
+    private fun stopHazardSync() { hazardJobStarted = false; HazardRepository.stop() }
+
+    /** Report at the current position. Uses the journey GPS fix when available, otherwise the last known position. */
+    fun reportHazard(category: HazardCategory, description: String?) = viewModelScope.launch {
+        val j = JourneyManager.state.value.self
+        val st = _ui.value
+        val lat = j?.lat ?: st.myLat; val lon = j?.lon ?: st.myLon
+        if (lat == null || lon == null) return@launch toast("No GPS position yet — cannot report a hazard")
+        try {
+            val h = HazardRepository.report(token(), category, lat, lon, j?.accuracyM?.takeIf { it < 9000 }, description)
+            toast(if (h.confirmations > 1) "Already reported nearby — added your confirmation" else "Hazard reported. Thank you")
+        } catch (e: Exception) { toast("Could not report hazard: ${e.message}") }
+    }
+
+    fun voteHazard(id: String, vote: String) = viewModelScope.launch {
+        val j = JourneyManager.state.value.self
+        val st = _ui.value
+        val lat = j?.lat ?: st.myLat; val lon = j?.lon ?: st.myLon
+        if (lat == null || lon == null) return@launch toast("No GPS position yet")
+        try {
+            val h = HazardRepository.vote(token(), id, vote, lat, lon)
+            toast(when { !h.active -> "Marked as cleared"; vote == "clear" -> "Thanks — needs one more driver to clear it"; else -> "Thanks for confirming" })
+        } catch (e: Exception) { toast("Could not update hazard: ${e.message}") }
+    }
+
     fun go(screen: Screen) = _ui.update { it.copy(screen = screen, message = null) }
 
     // ---- navigation ----
@@ -180,6 +225,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         } catch (_: Exception) {}
     }
 
+    // ---- smart search (debounced Photon autocomplete) ----
+    private val smartSearch = SmartSearch(viewModelScope)
+    val searchState: StateFlow<SearchState> = smartSearch.state
+
+    /** Call on every keystroke; biased toward the user's position so nearby places rank first. */
+    fun onQueryChanged(text: String) { val st = _ui.value; smartSearch.onQuery(text, st.myLat, st.myLon) }
+    fun submitQuery(text: String) { val st = _ui.value; smartSearch.onQuery(text, st.myLat, st.myLon, immediate = true) }
+    fun clearSearch() = smartSearch.clear()
+
+    /** Pick another candidate route from the options list. */
+    fun selectRoute(index: Int) = _ui.update { st -> st.copy(route = st.route?.select(index), stepIndex = 0) }
+
     fun search(q: String) = launchBusy {
         val r = NavigationHelper.search(getApplication(), q)
         _ui.update { it.copy(searchResults = r) }
@@ -187,6 +244,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun pickDestination(p: Place) {
+        smartSearch.clear()
         _ui.update { it.copy(destination = p, searchResults = emptyList(), route = null, stepIndex = 0) }
         previewRoute()
     }
@@ -199,6 +257,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         launchBusy {
             val r = NavigationHelper.route(lat, lon, dest)
             _ui.update { it.copy(route = r, stepIndex = 0) }
+            HazardRepository.refreshNow() // fetch hazards along the new route straight away
         }
     }
 

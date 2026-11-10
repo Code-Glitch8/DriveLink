@@ -6,10 +6,10 @@ Copy `android/drivelink.properties.example` to `android/drivelink.properties` (g
 | Key | Purpose |
 |---|---|
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | Default to the included project; public values only |
-| `GOOGLE_MAPS_API_KEY` | Map, route preview. Enable **Maps SDK for Android** and **Directions API** |
+| `MAP_STYLE_LIGHT_URL`, `MAP_STYLE_DARK_URL`, `ROUTING_BASE_URL`, `GEOCODER_BASE_URL` | Optional. Default to OpenFreeMap / OSRM demo / Nominatim; no keys. See `MAPS_AND_ROUTING.md` |
 | `CRED_PUBLIC_KEY_B64` | Verifies emergency credentials |
 
-**Google Maps key:** Cloud Console → APIs & Services → Credentials → Create API key → restrict to *Android apps* (package `com.drivelink` + your signing-certificate SHA-1; for GitHub debug builds use the debug keystore SHA-1 shown by `keytool`) and to the two APIs above. The Directions call is made from the phone with the same key — Google recommends app restriction; if you prefer, use a second key with only Directions enabled. Use a **different** key for the website.
+**Maps:** no Google key is needed any more (MapLibre Native + OpenFreeMap + OSRM). Read `docs/MAPS_AND_ROUTING.md` before shipping to many users: the default public servers have usage limits.
 
 **Emergency credentials:** run `scripts/gen-credential-keys.sh`; set the private output as Supabase secret `CRED_SIGNING_KEY_PKCS8_B64` (Project → Edge Functions → Secrets) and the public output as GitHub secret `CRED_PUBLIC_KEY_B64`.
 

@@ -1,6 +1,15 @@
 # Copy to drivelink.properties (git-ignored). Values can also come from environment variables.
 SUPABASE_URL=https://zfvbaicrqejktfiszefr.supabase.co
 SUPABASE_ANON_KEY=
-GOOGLE_MAPS_API_KEY=
 # Public key (base64 X.509) for verifying emergency credentials; see scripts/gen-credential-keys.sh
 CRED_PUBLIC_KEY_B64=
+# Optional map/routing overrides. Defaults need no API key:
+#   style:    OpenFreeMap (https://openfreemap.org) - OpenStreetMap data
+#   routing:  OSRM public demo server (reasonable non-commercial use only, max 1 request/second) - self-host for production
+#   geocoder: Nominatim public server (max 1 request/second, no autocomplete) - used only when the on-device Geocoder has no result
+# MAP_STYLE_LIGHT_URL=https://tiles.openfreemap.org/styles/liberty
+# MAP_STYLE_DARK_URL=https://tiles.openfreemap.org/styles/dark
+# ROUTING_BASE_URL=https://router.project-osrm.org
+# GEOCODER_BASE_URL=https://nominatim.openstreetmap.org
+# Autocomplete geocoder (Photon, OSM data). Public server is fair-use only; self-host for heavy traffic.
+# PHOTON_BASE_URL=https://photon.komoot.io
