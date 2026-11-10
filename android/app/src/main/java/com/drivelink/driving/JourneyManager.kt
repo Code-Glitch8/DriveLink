@@ -55,6 +55,14 @@ data class PeerView(
 /** A recent lane-merge request from a peer, keyed by its temporary session id. Shown briefly on the map. */
 data class LaneRequest(val direction: String, val atMs: Long)
 
+/** A merge request from another vehicle that is relevant to me. [side] is where it is relative to MY heading. */
+data class MergeAlert(val sid: String, val direction: String, val uncertain: Boolean, val side: String, val atMs: Long) {
+    val label: String get() = "…" + sid.takeLast(4)
+}
+
+/** My own outgoing merge signal, kept so the driver can cancel it. */
+data class MyMerge(val direction: String, val atMs: Long, val recipients: List<String>, val recipientCount: Int)
+
 /** level: 0 info, 1 caution, 2 high, 3 emergency */
 data class AlertItem(val id: Long, val text: String, val level: Int, val atMs: Long)
 
@@ -69,6 +77,8 @@ data class JourneyState(
     val canSendEmergency: Boolean = false,
     val sessionId: String = "",
     val laneRequests: Map<String, LaneRequest> = emptyMap(),
+    val mergeAlerts: List<MergeAlert> = emptyList(),
+    val myMerge: MyMerge? = null,
     /** Smoothed speed for display; [SpeedReading.Unavailable] when no trustworthy recent fix exists. */
     val speed: SpeedReading = SpeedReading.Unavailable,
 )
@@ -197,6 +207,8 @@ object JourneyManager {
         }
     }
 
+    private const val MERGE_TTL_MS = 8_000L
+
     private fun noteSpeed(s: LocationSample) {
         synchronized(speedHistory) {
             speedHistory.addLast(s.timestampMs to s.speedKmh)
@@ -253,7 +265,9 @@ object JourneyManager {
         _state.update {
             it.copy(self = s, speed = synchronized(speedFilter) { speedFilter.read(now) }, peers = views, connected = repo.count(), dataQualityWarning = warning,
                 alerts = it.alerts.filter { a -> now - a.atMs < 30_000 },
-                laneRequests = it.laneRequests.filterValues { r -> now - r.atMs < 10_000 })
+                laneRequests = it.laneRequests.filterValues { r -> now - r.atMs < MERGE_TTL_MS },
+                mergeAlerts = it.mergeAlerts.filter { a -> now - a.atMs < MERGE_TTL_MS },
+                myMerge = it.myMerge?.takeIf { m -> now - m.atMs < MERGE_TTL_MS })
         }
     }
 
@@ -279,13 +293,7 @@ object JourneyManager {
         when (e) {
             is PeerEvent.Status -> tracker.update(e.sid, e.vehicleType, e.sample, e.emergencyType)
             is PeerEvent.PeerAuthenticated -> _state.update { it.copy(comm = "Authenticated peer ${e.sid.takeLast(4)}") }
-            is PeerEvent.LaneChange -> {
-                val nowMs = System.currentTimeMillis()
-                _state.update { st -> st.copy(laneRequests = st.laneRequests + (e.sid to LaneRequest(e.direction, nowMs))) }
-                val side = if (e.direction == "LEFT") "left" else "right"
-                pushAlertDedup("lane-${e.sid}", "Vehicle (${describe(e.sid)}) requests to merge $side — not permission", 1, 6_000)
-                speaker?.speak("lane-$side", "Vehicle requests to merge $side.", 2, 6_000)
-            }
+            is PeerEvent.LaneChange -> onLaneChange(e)
             is PeerEvent.Emergency -> {
                 if (e.verified) {
                     val name = e.etype.replace('_', ' ')
@@ -306,11 +314,69 @@ object JourneyManager {
         }
     }
 
-    // ---- driver actions ----
+    // ---- merge signalling (advisory only; never controls a vehicle) ----
+    private var lastMergeSendMs = 0L
+
+    private fun requesterHeadingConfidence(): Double {
+        val h = HeadingTracker.heading.value
+        return when { h.deg == null -> 0.0; h.source == com.drivelink.orientation.HeadingSource.GPS -> 1.0; else -> 0.8 }
+    }
+
+    private fun onLaneChange(e: PeerEvent.LaneChange) {
+        val nowMs = System.currentTimeMillis()
+        if (e.cancel) {
+            // The requester withdrew: the alert disappears at once.
+            _state.update { st -> st.copy(mergeAlerts = st.mergeAlerts.filter { it.sid != e.sid }, laneRequests = st.laneRequests - e.sid) }
+            return
+        }
+        val cur = me ?: return
+        val req = tracker.sample(e.sid)
+        var uncertain = true
+        var side = "nearby"
+        if (req != null) {
+            // Re-check on the receiving side with the requester's own heading: ignore requests that are not about me.
+            val a = com.drivelink.driving.MergeRecipientSelector.assess(req, e.direction, cur, nowMs, if (req.speedKmh >= 5.0) 1.0 else 0.8)
+            if (a.verdict == com.drivelink.driving.MergeVerdict.IGNORE) return
+            uncertain = a.verdict == com.drivelink.driving.MergeVerdict.NOTIFY_UNCERTAIN
+            side = com.drivelink.location.Geo.relativeDirection(cur.bearing, com.drivelink.location.Geo.bearingDeg(cur.lat, cur.lon, req.lat, req.lon))
+        }
+        val fresh = _state.value.mergeAlerts.none { it.sid == e.sid && it.direction == e.direction }
+        _state.update { st -> st.copy(
+            laneRequests = st.laneRequests + (e.sid to LaneRequest(e.direction, nowMs)),
+            mergeAlerts = st.mergeAlerts.filter { it.sid != e.sid } + MergeAlert(e.sid, e.direction, uncertain, side, nowMs)) }
+        // Speak once per new request (dedupe window avoids repeating while the same alert is on screen).
+        if (fresh) speaker?.speak("lane-${e.sid}", if (uncertain) "A vehicle nearby may be merging." else "Vehicle on your $side merging ${e.direction.lowercase()}.", 2, 6_000)
+    }
+
     fun sendLaneChange(dir: String) {
         val dm = data ?: return
-        nearby?.send(repo.connectedIds(), dm.laneChange(dir))
-        pushAlert("Merge ${dir.lowercase()} request sent", 0)
+        val nowMs = System.currentTimeMillis()
+        if (nowMs - lastMergeSendMs < 3_000) return // no spam: one signal per 3 s
+        val cur = me ?: return pushAlert("No GPS fix — cannot signal a merge", 0)
+        val hc = requesterHeadingConfidence()
+        val recipients = repo.connectedIds().filter { ep ->
+            val sid = repo.get(ep)?.identity?.sid ?: return@filter false
+            val s = tracker.sample(sid) ?: return@filter false
+            com.drivelink.driving.MergeRecipientSelector.assess(cur, dir, s, nowMs, hc).verdict != com.drivelink.driving.MergeVerdict.IGNORE
+        }
+        val side = dir.lowercase()
+        if (recipients.isEmpty()) {
+            _state.update { it.copy(myMerge = null) }
+            return pushAlert("No vehicle detected on your $side. This does not guarantee the lane is clear — check mirrors", 0)
+        }
+        lastMergeSendMs = nowMs
+        nearby?.send(recipients, dm.laneChange(dir))
+        _state.update { it.copy(myMerge = MyMerge(dir, nowMs, recipients, recipients.size)) }
+        pushAlert("Merge $side signalled to ${recipients.size} vehicle${if (recipients.size > 1) "s" else ""} — advisory only", 0)
+    }
+
+    /** Withdraws my merge signal; recipients' alerts disappear immediately. */
+    fun cancelLaneChange() {
+        val dm = data ?: return
+        val m = _state.value.myMerge ?: return
+        nearby?.send(m.recipients.filter { repo.get(it) != null }, dm.laneChange(m.direction, cancel = true))
+        _state.update { it.copy(myMerge = null) }
+        pushAlert("Merge signal cancelled", 0)
     }
 
     fun sendHazard(kind: String) {

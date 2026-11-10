@@ -42,6 +42,10 @@ class ProtocolTest {
     @Test fun otherBodiesValidated() {
         assertNull(CommunicationProtocol.validateBody(MessageType.LANE_CHANGE_REQUEST, JSONObject().put("dir", "LEFT")))
         assertTrue(CommunicationProtocol.validateBody(MessageType.LANE_CHANGE_REQUEST, JSONObject().put("dir", "UP")) != null)
+        // optional "act": REQUEST/CANCEL accepted, anything else rejected, absent (older peers) still valid
+        assertNull(CommunicationProtocol.validateBody(MessageType.LANE_CHANGE_REQUEST, JSONObject().put("dir", "RIGHT").put("act", "CANCEL")))
+        assertNull(CommunicationProtocol.validateBody(MessageType.LANE_CHANGE_REQUEST, JSONObject().put("dir", "RIGHT").put("act", "REQUEST")))
+        assertTrue(CommunicationProtocol.validateBody(MessageType.LANE_CHANGE_REQUEST, JSONObject().put("dir", "RIGHT").put("act", "STEER")) != null)
         assertTrue(CommunicationProtocol.validateBody(MessageType.EMERGENCY_ALERT, JSONObject().put("etype", "taxi")) != null)
         assertTrue(CommunicationProtocol.validateBody(MessageType.HAZARD_ALERT, JSONObject().put("kind", "ACCIDENT")) != null)
     }
