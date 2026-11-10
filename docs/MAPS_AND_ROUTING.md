@@ -14,13 +14,34 @@ DriveLink renders maps with **MapLibre Native for Android** (`org.maplibre.gl:an
 Style fallback chain: dark style → light style → plain offline background. Vehicles, routes and your location are separate GeoJSON
 layers, so they still draw when base tiles cannot load. A banner with **Retry** explains which fallback is active.
 
+## Map orientation and speed
+- **Heading source** (`orientation/HeadingFusion.kt`): compass (TYPE_ROTATION_VECTOR, falling back to accelerometer+magnetometer, converted to true north with
+  `GeomagneticField`) when stationary/slow; **GPS course** when moving (≥ 3 m/s, accuracy ≤ 30 m, fix has a bearing). Between 1.5 and 3 m/s the previous source is kept
+  (hysteresis). If the preferred source is missing/stale the other is used; if neither is trustworthy no heading is invented and the map stays North-Up.
+- **Smoothing**: circular low-pass (correct across 359°→1°), 1.5° dead-band, snap (no long swing) when switching source. `CameraUpdateGate` only moves the camera for ≥ 2° turns
+  or ≥ 1.5 m moves and at most every 200 ms.
+- **Phone angle**: the pointing axis is chosen from the gravity vector (flat → top edge, upright → camera axis); near the boundary the reading is flagged unreliable.
+- **Lifecycle**: `HeadingTracker` is ref-counted: the driving screen (started/stopped with the lifecycle) and a running journey each acquire/release it; sensors stop when nobody needs them.
+  Devices without orientation sensors degrade to GPS course / North-Up.
+- **Controls**: ▲/N toggles Heading-Up/North-Up (remembered for the app session), ◎ Recenter (highlighted after you pan away). Marker, vehicles, hazards and routes are always
+  placed by true coordinates; only the camera bearing changes.
+- **Speed** (`location/SpeedFilter.kt`): EMA (faster catch-up on hard acceleration), rejects fixes without speed / accuracy > 50 m / speed accuracy > 3 m/s / older than 3 s /
+  non-advancing timestamps; snaps to 0 below ~2 km/h; after 6 s without an accepted fix the widget shows "—  GPS speed unavailable" instead of a stale number.
+
+## Route alternatives and hazard-aware advice
+OSRM is asked for `alternatives=3`; `RouteUtil` drops near-identical routes, labels **Fastest / Shortest / Alternative**, and extracts the major named roads
+(≥ 12 % of the distance, in driving order). Each option has time, distance and roads; the selected route is solid and the alternatives are dashed in distinct colours.
+`RouteAdvisor` counts active hazards within 50 m of each route. It warns only for severity ≥ 2 hazards ("Reported accident on this route in 980 m (unconfirmed)") and
+suggests another option only if it removes enough weighted impact, showing the time and distance delta. It never says a road is "blocked" or "closed" as fact.
+The public OSRM server returns fewer alternatives than requested depending on geography; one route is a normal outcome.
+
 ## Usage limits: read before production
 - **OpenFreeMap** is a free public service. Check <https://openfreemap.org> for current terms; consider self-hosting for heavy use. Attribution
   ("© OpenStreetMap contributors · OpenFreeMap · © OpenMapTiles") is always shown on the map.
 - **OSRM public demo server**: reasonable, non-commercial use only, about 1 request/second, identifying User-Agent, no uptime guarantee,
   car profile only. The app spaces requests ≥1.1 s apart and sends a User-Agent. For real traffic, **self-host OSRM** or use a paid router and set `ROUTING_BASE_URL`.
-- **Nominatim public server**: max 1 request/second, identifying User-Agent, no search-as-you-type. The app only searches when the user presses *Go*,
-  and only falls back to Nominatim when the on-device Geocoder returns nothing.
+- **Photon** (autocomplete, `PHOTON_BASE_URL`) is fair-use; see [SMART_SEARCH](SMART_SEARCH.md). Self-host for real traffic.
+- **Nominatim public server**: max 1 request/second, identifying User-Agent, no search-as-you-type. Used only as the fallback when Photon fails.
 - The dark style URL above follows OpenFreeMap's naming but was **not** verified against a live request during the migration; if it fails the app falls back to light.
 
 ## Layer tree (`com.drivelink.map`)

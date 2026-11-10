@@ -22,6 +22,13 @@ jobs:
           gradle assembleDebug --console=plain > "$RUNNER_TEMP/build.log" 2>&1; echo $? > "$RUNNER_TEMP/build.rc"
           gradle testDebugUnitTest --console=plain > "$RUNNER_TEMP/test.log" 2>&1; echo $? > "$RUNNER_TEMP/test.rc"
           exit 0
+      - name: Collect APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/DriveLink-debug.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DriveLink-debug-apk
+          path: DriveLink-debug.apk
+          if-no-files-found: error
       - name: Publish report
         run: |
           cd "$GITHUB_WORKSPACE"

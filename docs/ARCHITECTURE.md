@@ -41,3 +41,11 @@ hazards and emergency alerts flow phone-to-phone with no internet. Live position
 - Sudden braking uses GPS speed drop only (experimental); no accelerometer fusion.
 - The cached-credential/revocation system is replaced by never trusting previous connections; emergency credentials expire after 24 h.
 - The Android app cannot request an emergency account; use the website. Admin verification is via SQL (`admin_set_emergency_status`).
+
+
+## Responsibilities (current)
+- **Nearby Connections** — local, instant, offline: peer status, merge requests/cancels, emergency and quick hazard alerts.
+- **Supabase** — accounts, vehicles, **shared hazards** (validated, expiring), RLS. Hazards are polled, never pushed to everyone.
+- **MapLibre** — rendering only (layer tree, markers, camera). It knows nothing about routing or hazard rules.
+- **Providers** — routing (OSRM behind `RoutingProvider`), geocoding (Photon → Nominatim). Each is replaceable via config.
+- **Pure logic modules (unit-tested):** `orientation/*`, `location/SpeedFilter`, `hazards/*`, `search/SearchSupport`, `navigation/RouteUtil|RouteAdvisor`, `driving/MergeRecipients`.

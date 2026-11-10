@@ -4,6 +4,19 @@
 parallel/diverging/stationary = NORMAL, poor accuracy/stale = no warning), protocol validation, serializer, geo maths, authentication
 (unauthenticated ignored, tampering, replay, session spoofing, emergency credential verified/unverified).
 
+**Automated additions (95 tests total in CI):** heading maths/fusion/camera gate, speed filter, hazard parsing/geometry/route-corridor boxes, search parsing/ranking/cache,
+route labelling/duplicates/hazard advice, merge recipient selection, protocol `act` validation. SQL behaviour tests for the hazard migration:
+`supabase/tests/hazards_test.sql` (run on a scratch Postgres/Supabase branch — never production).
+
+**Needs a real device / on-road test (NOT proven by the automated tests):**
+- Heading-Up: compass drift/calibration, phone in a mount vs flat vs in hand, smoothness while turning, behaviour with sensors disabled, GPS-course switch at ~10 km/h, battery with screen on.
+- Speed: GPS noise at a stop, tunnels/urban canyons, comparison with the vehicle speedometer.
+- Photon search: real response shapes and latency, ambiguous names, no-network error, rate limiting.
+- OSRM alternatives: how many routes come back for real trips; map line distinguishability outdoors in sunlight.
+- Hazards: apply the migration, then report from phone A, see on phone B, confirm, clear with two accounts, watch expiry; poor-network reporting.
+- Merge: two or more phones in cars/on foot at lane-width offsets; verify left/right with different headings, cancel, 8 s expiry, no alert for the wrong side, behaviour at low GPS accuracy.
+- UI: dark/light on real displays, glanceability while driving (as a passenger), landscape, large fonts.
+
 **Website:** open the Simulator tab, run each scenario; open DevTools console for errors. Risk logic matches the Android engine.
 
 **Supabase checks (SQL editor as different users):** a user cannot select/update another user's vehicles; cannot change `drive_link_vehicle_id`,
